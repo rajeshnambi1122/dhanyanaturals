@@ -42,6 +42,9 @@ export default function AdminDashboard() {
   const [uploadingImages, setUploadingImages] = useState(false)
   const [storageStatus, setStorageStatus] = useState<{ isReady: boolean; message: string } | null>(null)
   const [checkingStorage, setCheckingStorage] = useState(false)
+  const [editingOrder, setEditingOrder] = useState<Order | null>(null)
+  const [isEditStatusOpen, setIsEditStatusOpen] = useState(false)
+  const [updatingOrderStatus, setUpdatingOrderStatus] = useState(false)
 
   useEffect(() => {
     checkAuth()
@@ -67,6 +70,60 @@ export default function AdminDashboard() {
       })
     } finally {
       setCheckingStorage(false)
+    }
+  }
+
+  const handleUpdateOrderStatus = async (orderId: number, newStatus: string) => {
+    setUpdatingOrderStatus(true)
+    try {
+      await orderService.updateOrderStatus(orderId, newStatus as Order["status"])
+      
+      // Refresh orders list
+      const updatedOrders = await orderService.getOrders()
+      setOrders(updatedOrders)
+      
+      // Close dialog
+      setIsEditStatusOpen(false)
+      setEditingOrder(null)
+      
+      // Show success notification
+      const notification = document.createElement('div')
+      notification.className = 'fixed top-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg z-50 animate-slide-in'
+      notification.innerHTML = `
+        <div class="flex items-center gap-2">
+          <span>✅</span>
+          <div>
+            <div class="font-semibold">Status Updated</div>
+            <div class="text-sm opacity-90">Order #${orderId} status changed to ${newStatus}</div>
+          </div>
+        </div>
+      `
+      document.body.appendChild(notification)
+      setTimeout(() => {
+        notification.remove()
+      }, 3000)
+      
+    } catch (error) {
+      console.error('Error updating order status:', error)
+      
+      // Show error notification
+      const notification = document.createElement('div')
+      notification.className = 'fixed top-4 right-4 bg-red-500 text-white px-6 py-3 rounded-lg shadow-lg z-50 animate-slide-in'
+      notification.innerHTML = `
+        <div class="flex items-center gap-2">
+          <span>❌</span>
+          <div>
+            <div class="font-semibold">Update Failed</div>
+            <div class="text-sm opacity-90">Could not update order status</div>
+          </div>
+        </div>
+      `
+      document.body.appendChild(notification)
+      setTimeout(() => {
+        notification.remove()
+      }, 3000)
+    } finally {
+      setUpdatingOrderStatus(false)
     }
   }
 
@@ -470,7 +527,7 @@ export default function AdminDashboard() {
                         Add Product
                       </Button>
                     </DialogTrigger>
-                    <DialogContent className="max-w-2xl w-full mx-4 glass-modal max-h-[90vh] overflow-y-auto">
+                    <DialogContent className="max-w-2xl w-[95vw] mx-auto glass-modal max-h-[90vh] overflow-y-auto sm:w-full sm:mx-4">
                       <DialogHeader>
                         <DialogTitle className="text-lg md:text-xl">{editingProduct ? "Edit Product" : "Add New Product"}</DialogTitle>
                       </DialogHeader>
@@ -736,6 +793,71 @@ export default function AdminDashboard() {
                           )}
                         </Button>
                       </div>
+                    </DialogContent>
+                  </Dialog>
+
+                  {/* Edit Order Status Dialog */}
+                  <Dialog open={isEditStatusOpen} onOpenChange={setIsEditStatusOpen}>
+                    <DialogContent className="max-w-md w-[95vw] mx-auto glass-modal">
+                      <DialogHeader>
+                        <DialogTitle className="text-lg">Edit Order Status</DialogTitle>
+                      </DialogHeader>
+                      {editingOrder && (
+                        <div className="space-y-4">
+                          <div className="bg-gray-50 p-4 rounded-lg">
+                            <h4 className="font-semibold text-gray-800">Order #{editingOrder.id}</h4>
+                            <p className="text-sm text-gray-600">{editingOrder.customer_name}</p>
+                            <p className="text-sm font-medium text-green-600">₹{editingOrder.total_amount}</p>
+                          </div>
+
+                          <div>
+                            <Label className="text-sm font-medium text-gray-700 mb-3 block">Select New Status</Label>
+                            <div className="grid grid-cols-1 gap-2">
+                              {[
+                                { value: 'pending', label: 'Pending', color: 'bg-gray-100 text-gray-800 hover:bg-gray-200' },
+                                { value: 'processing', label: 'Processing', color: 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200' },
+                                { value: 'shipped', label: 'Shipped', color: 'bg-blue-100 text-blue-800 hover:bg-blue-200' },
+                                { value: 'delivered', label: 'Delivered', color: 'bg-green-100 text-green-800 hover:bg-green-200' },
+                                { value: 'cancelled', label: 'Cancelled', color: 'bg-red-100 text-red-800 hover:bg-red-200' }
+                              ].map((status) => (
+                                <Button
+                                  key={status.value}
+                                  variant="outline"
+                                  className={`justify-start h-auto p-3 ${status.color} ${
+                                    editingOrder.status === status.value ? 'ring-2 ring-green-500' : ''
+                                  }`}
+                                  onClick={() => handleUpdateOrderStatus(editingOrder.id, status.value)}
+                                  disabled={updatingOrderStatus || editingOrder.status === status.value}
+                                >
+                                  <div className="flex items-center justify-between w-full">
+                                    <span className="font-medium">{status.label}</span>
+                                    {editingOrder.status === status.value && (
+                                      <span className="text-xs bg-green-600 text-white px-2 py-1 rounded">Current</span>
+                                    )}
+                                    {updatingOrderStatus && (
+                                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-gray-600"></div>
+                                    )}
+                                  </div>
+                                </Button>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div className="flex gap-3 pt-4">
+                            <Button 
+                              variant="outline" 
+                              className="flex-1" 
+                              onClick={() => {
+                                setIsEditStatusOpen(false)
+                                setEditingOrder(null)
+                              }}
+                              disabled={updatingOrderStatus}
+                            >
+                              Cancel
+                            </Button>
+                          </div>
+                        </div>
+                      )}
                     </DialogContent>
                   </Dialog>
                 </div>
@@ -1099,13 +1221,17 @@ export default function AdminDashboard() {
                         {/* Admin Actions */}
                         <div className="border-t border-gray-200 pt-4 mt-4">
                           <div className="flex flex-wrap gap-2">
-                            <Button variant="outline" size="sm" className="glass-input bg-transparent">
+                            <Button 
+                              variant="outline" 
+                              size="sm" 
+                              className="glass-input bg-transparent"
+                              onClick={() => {
+                                setEditingOrder(order)
+                                setIsEditStatusOpen(true)
+                              }}
+                            >
                               <Edit className="h-3 w-3 mr-1" />
                               Edit Status
-                            </Button>
-                            <Button variant="outline" size="sm" className="glass-input bg-transparent">
-                              <Truck className="h-3 w-3 mr-1" />
-                              Update Tracking
                             </Button>
                             <Button variant="outline" size="sm" className="glass-input bg-transparent text-red-600 hover:text-red-700">
                               <Trash2 className="h-3 w-3 mr-1" />

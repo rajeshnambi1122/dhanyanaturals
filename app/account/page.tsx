@@ -156,10 +156,6 @@ export default function AccountPage() {
             
             {/* Action Buttons */}
             <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
-              <button className="glass-input bg-transparent hover:bg-white/10 px-4 py-2 rounded-lg flex items-center justify-center gap-2 transition-colors">
-                <Settings className="h-4 w-4" />
-                <span>Settings</span>
-              </button>
               <button 
                 onClick={handleLogout} 
                 className="glass-button px-4 py-2 rounded-lg flex items-center justify-center gap-2 hover-lift bg-red-500 hover:bg-red-600 text-white"

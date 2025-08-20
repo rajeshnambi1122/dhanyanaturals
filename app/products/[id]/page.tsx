@@ -170,6 +170,138 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
     console.log(`Buy now: ${quantity} of ${product?.name}`)
   }
 
+  const handleShare = async () => {
+    if (!product) return
+
+    const shareData = {
+      title: `${product.name} - Dhanya Naturals`,
+      text: `Check out this amazing ${product.name} from Dhanya Naturals! ${product.description}`,
+      url: window.location.href
+    }
+
+    try {
+      // Check if Web Share API is supported (mobile browsers)
+      if (navigator.share) {
+        await navigator.share(shareData)
+        
+        // Success notification
+        const notification = document.createElement('div');
+        notification.className = 'fixed top-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg z-50 animate-slide-in';
+        notification.innerHTML = `
+          <div class="flex items-center gap-2">
+            <span>📤</span>
+            <div>
+              <div class="font-semibold">Shared Successfully!</div>
+              <div class="text-sm opacity-90">Product shared via your device.</div>
+            </div>
+          </div>
+        `;
+        document.body.appendChild(notification);
+        setTimeout(() => {
+          notification.remove();
+        }, 3000);
+      } else {
+        // Fallback: Copy to clipboard
+        // Try clipboard API first
+        if (navigator.clipboard) {
+          await navigator.clipboard.writeText(window.location.href)
+          
+          // Success notification for clipboard
+          const notification = document.createElement('div');
+          notification.className = 'fixed top-4 right-4 bg-blue-500 text-white px-6 py-3 rounded-lg shadow-lg z-50 animate-slide-in';
+          notification.innerHTML = `
+            <div class="flex items-center gap-2">
+              <span>📋</span>
+              <div>
+                <div class="font-semibold">Link Copied!</div>
+                <div class="text-sm opacity-90">Product link copied to clipboard.</div>
+              </div>
+            </div>
+          `;
+          document.body.appendChild(notification);
+          setTimeout(() => {
+            notification.remove();
+          }, 3000);
+        } else {
+          // Final fallback: Show share options
+          showShareOptions()
+        }
+      }
+    } catch (error) {
+      console.error('Error sharing:', error)
+      
+      // Show share options as fallback if sharing fails
+      if (error instanceof Error && error.name === 'AbortError') {
+        // User cancelled the share, do nothing
+        return
+      }
+      
+      // For other errors, show share options
+      showShareOptions()
+    }
+  }
+
+  const showShareOptions = () => {
+    if (!product) return
+
+    const currentUrl = window.location.href
+    const text = `Check out this amazing ${product.name} from Dhanya Naturals!`
+    
+    // Create share options modal
+    const modal = document.createElement('div');
+    modal.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-50 animate-fade-in';
+    modal.innerHTML = `
+      <div class="bg-white rounded-2xl p-6 max-w-sm mx-4 animate-scale-in">
+        <h3 class="text-lg font-semibold mb-4 text-center">Share Product</h3>
+        <div class="space-y-3">
+          <a href="https://wa.me/?text=${encodeURIComponent(text + ' ' + currentUrl)}" 
+             target="_blank" 
+             class="flex items-center gap-3 p-3 rounded-lg bg-green-50 hover:bg-green-100 transition-colors">
+            <span class="text-2xl">📱</span>
+            <span class="font-medium">WhatsApp</span>
+          </a>
+          <a href="https://t.me/share/url?url=${encodeURIComponent(currentUrl)}&text=${encodeURIComponent(text)}" 
+             target="_blank"
+             class="flex items-center gap-3 p-3 rounded-lg bg-blue-50 hover:bg-blue-100 transition-colors">
+            <span class="text-2xl">✈️</span>
+            <span class="font-medium">Telegram</span>
+          </a>
+          <a href="https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(currentUrl)}" 
+             target="_blank"
+             class="flex items-center gap-3 p-3 rounded-lg bg-sky-50 hover:bg-sky-100 transition-colors">
+            <span class="text-2xl">🐦</span>
+            <span class="font-medium">Twitter</span>
+          </a>
+          <button onclick="navigator.clipboard.writeText('${currentUrl}').then(() => { 
+                    const notification = document.createElement('div');
+                    notification.className = 'fixed top-4 right-4 bg-green-500 text-white px-4 py-2 rounded shadow-lg z-50';
+                    notification.textContent = 'Link copied!';
+                    document.body.appendChild(notification);
+                    setTimeout(() => notification.remove(), 2000);
+                    this.closest('.fixed').remove();
+                  })"
+                  class="w-full flex items-center gap-3 p-3 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors">
+            <span class="text-2xl">📋</span>
+            <span class="font-medium">Copy Link</span>
+          </button>
+        </div>
+        <button onclick="this.closest('.fixed').remove()" 
+                class="w-full mt-4 p-2 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">
+          Cancel
+        </button>
+      </div>
+    `;
+    
+    // Close on background click
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        modal.remove();
+      }
+    });
+    
+    document.body.appendChild(modal);
+  }
+
   const handleSubmitReview = async () => {
     if (!user || !product) return
 
@@ -346,8 +478,8 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
         {/* Mobile centered layout, desktop grid */}
         <div className="flex flex-col lg:grid lg:grid-cols-2 gap-8 lg:gap-12 items-center lg:items-start">
           {/* Product Image Section */}
-          <div className="space-y-4 w-full max-w-lg lg:max-w-none">
-            <div className="glass-card p-6">
+          <div className="space-y-2 w-full max-w-lg lg:max-w-none">
+            <div className="glass-card p-2">
               <div className="aspect-square relative overflow-hidden rounded-xl">
                 <Image
                   src={productImages[selectedImage] || "/placeholder.svg"}
@@ -361,12 +493,12 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
 
             {/* Image Thumbnails */}
             {productImages.length > 1 && (
-              <div className="flex gap-2 justify-center">
+              <div className="flex gap-1 justify-center">
                 {productImages.map((image, index) => (
                   <button
                     key={index}
                     onClick={() => setSelectedImage(index)}
-                    className={`glass-card p-2 w-20 h-20 rounded-lg overflow-hidden ${
+                    className={`glass-card p-1 w-20 h-20 rounded-lg overflow-hidden ${
                       selectedImage === index ? "ring-2 ring-green-500" : ""
                     }`}
                   >
@@ -447,7 +579,12 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => setQuantity(Math.min(product.stock_quantity, quantity + 1))}
+                    onClick={() => {
+                      if (quantity < product.stock_quantity) {
+                        setQuantity(quantity + 1)
+                      }
+                    }}
+                    disabled={quantity >= product.stock_quantity}
                     className="glass-input"
                   >
                     <Plus className="h-4 w-4" />
@@ -494,7 +631,11 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
                   <Heart className={`h-4 w-4 mr-2 ${isWishlisted ? "fill-red-500 text-red-500" : ""}`} />
                   {isWishlisted ? "Wishlisted" : "Add to Wishlist"}
                 </Button>
-                <Button variant="outline" className="glass-input bg-transparent">
+                <Button 
+                  variant="outline" 
+                  className="glass-input bg-transparent hover-lift"
+                  onClick={handleShare}
+                >
                   <Share2 className="h-4 w-4 mr-2" />
                   Share
                 </Button>
@@ -515,7 +656,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
                   <Truck className="h-5 w-5 text-green-600" />
                   <div>
                     <p className="font-medium text-sm">Free Shipping</p>
-                    <p className="text-xs text-gray-500">On orders over $50</p>
+                    <p className="text-xs text-gray-500">On orders over ₹500</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
