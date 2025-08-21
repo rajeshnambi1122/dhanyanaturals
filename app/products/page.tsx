@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import Image from "next/image"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -22,6 +23,7 @@ const categories = [
 ]
 
 export default function ProductsPage() {
+  const router = useRouter()
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
@@ -30,10 +32,36 @@ export default function ProductsPage() {
   const [showInStockOnly, setShowInStockOnly] = useState(false)
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid")
   const [showFilters, setShowFilters] = useState(false)
+  const [prefetchedProducts, setPrefetchedProducts] = useState<Set<number>>(new Set())
 
   useEffect(() => {
     loadProducts()
   }, [selectedCategory, searchTerm, sortBy, showInStockOnly])
+
+  // Background prefetching for popular products
+  useEffect(() => {
+    const prefetchPopularProducts = async () => {
+      if (products.length > 0) {
+        // Prefetch top 3 featured or highest-rated products
+        const popularProducts = products
+          .filter(p => p.featured || (p.rating && p.rating >= 4.5))
+          .slice(0, 3)
+        
+        popularProducts.forEach(product => {
+          if (!prefetchedProducts.has(product.id)) {
+            setTimeout(() => {
+              router.prefetch(`/products/${product.id}`)
+              setPrefetchedProducts(prev => new Set([...prev, product.id]))
+            }, 100 * product.id) // Stagger the prefetches
+          }
+        })
+      }
+    }
+
+    // Start prefetching after a small delay
+    const timeoutId = setTimeout(prefetchPopularProducts, 2000)
+    return () => clearTimeout(timeoutId)
+  }, [products, router, prefetchedProducts])
 
   const loadProducts = async () => {
     setLoading(true)
@@ -50,6 +78,23 @@ export default function ProductsPage() {
       console.error("Error loading products:", error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  // Prefetch product data on hover
+  const handleProductHover = async (productId: number) => {
+    if (prefetchedProducts.has(productId)) return
+    
+    try {
+      // Prefetch the route
+      router.prefetch(`/products/${productId}`)
+      
+      // Prefetch product data (optional - for instant loading)
+      productService.getProductById(productId)
+      
+      setPrefetchedProducts(prev => new Set([...prev, productId]))
+    } catch (error) {
+      console.error("Error prefetching product:", error)
     }
   }
 
@@ -218,8 +263,11 @@ export default function ProductsPage() {
             {viewMode === "grid" ? (
               <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-8 stagger-animation">
                 {products.map((product, index) => (
-                  <Link href={`/products/${product.id}`} key={product.id}>
-                    <div className="glass-product-card product-card-hover cursor-pointer group">
+                  <Link href={`/products/${product.id}`} key={product.id} prefetch={true}>
+                    <div 
+                      className="glass-product-card product-card-hover cursor-pointer group"
+                      onMouseEnter={() => handleProductHover(product.id)}
+                    >
                       <div className="p-0 relative overflow-hidden">
                         <div className="relative overflow-hidden rounded-t-lg">
                           <Image
@@ -284,8 +332,11 @@ export default function ProductsPage() {
             ) : (
               <div className="space-y-6 stagger-animation">
                 {products.map((product, index) => (
-                  <Link href={`/products/${product.id}`} key={product.id}>
-                    <div className="glass-card p-6 cursor-pointer hover:shadow-lg transition-all duration-300 hover-lift group">
+                  <Link href={`/products/${product.id}`} key={product.id} prefetch={true}>
+                    <div 
+                      className="glass-card p-6 cursor-pointer hover:shadow-lg transition-all duration-300 hover-lift group"
+                      onMouseEnter={() => handleProductHover(product.id)}
+                    >
                       <div className="flex gap-6">
                         <div className="relative overflow-hidden rounded-lg">
                           <Image

@@ -170,7 +170,7 @@ export default function CheckoutPage() {
         notes: notes || undefined
       };
 
-      // Create order
+      // Create order with server-side price validation
       const newOrder = await orderService.createOrder(orderData);
       
       // Clear cart after successful order
@@ -185,7 +185,15 @@ export default function CheckoutPage() {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (error) {
       console.error('Error creating order:', error);
-      alert('Failed to place order. Please try again.');
+      
+      // Check if it's a price validation error
+      if (error instanceof Error && error.message.includes('Price mismatch detected')) {
+        alert('Price has changed. Please refresh your cart and try again.');
+        // Optionally redirect to cart page
+        router.push('/cart');
+      } else {
+        alert('Failed to place order. Please try again.');
+      }
     } finally {
       setSubmitting(false);
     }

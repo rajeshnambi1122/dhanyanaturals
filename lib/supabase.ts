@@ -310,9 +310,69 @@ export const orderService = {
     return data || []
   },
 
-  // Create new order
+  // 🔒 SECURITY: Validate order prices against database prices
+  async validateOrderPrices(order: Omit<Order, "id" | "created_at" | "updated_at">) {
+    let serverCalculatedTotal = 0;
+    const validatedItems = [];
+
+    // Validate each item's price against database
+    for (const item of order.items) {
+      // Fetch actual product price from database
+      const { data: product, error } = await supabase
+        .from("products")
+        .select("price")
+        .eq("id", item.product_id)
+        .single();
+
+      if (error || !product) {
+        throw new Error(`Product ${item.product_id} not found or unavailable`);
+      }
+
+      // Use server price, not client price
+      const serverPrice = product.price;
+      const itemTotal = serverPrice * item.quantity;
+      
+      // Build validated item with server price
+      validatedItems.push({
+        ...item,
+        price: serverPrice,  // ✅ Use server price
+        total: itemTotal     // ✅ Calculate server-side
+      });
+
+      serverCalculatedTotal += itemTotal;
+    }
+
+    // Calculate shipping server-side
+    const shipping = serverCalculatedTotal > 499 ? 0 : 50;
+    const finalTotal = serverCalculatedTotal + shipping;
+
+    // 🚨 SECURITY CHECK: Compare with client-sent total
+    const clientTotal = order.total_amount;
+    const tolerance = 0.01; // Allow 1 paisa difference for rounding
+
+    if (Math.abs(finalTotal - clientTotal) > tolerance) {
+      console.error(`Price manipulation detected!`, {
+        clientTotal,
+        serverTotal: finalTotal,
+        difference: Math.abs(finalTotal - clientTotal)
+      });
+      throw new Error("Price mismatch detected. Please refresh and try again.");
+    }
+
+    // Return validated order with server-calculated values
+    return {
+      ...order,
+      items: validatedItems,
+      total_amount: finalTotal  // ✅ Use server-calculated total
+    };
+  },
+
+  // Create new order with server-side price validation
   async createOrder(order: Omit<Order, "id" | "created_at" | "updated_at">) {
-    const { data, error } = await supabase.from("orders").insert([order]).select().single()
+    // 🔒 SECURITY: Validate prices server-side before creating order
+    const validatedOrder = await this.validateOrderPrices(order);
+    
+    const { data, error } = await supabase.from("orders").insert([validatedOrder]).select().single()
 
     if (error) {
       console.error("Error creating order:", error)

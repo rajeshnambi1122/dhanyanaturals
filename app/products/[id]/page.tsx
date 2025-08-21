@@ -3,9 +3,11 @@
 import React, { useState, useEffect } from "react"
 import Image from "next/image"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+
 import {
   Leaf,
   ShoppingBag,
@@ -25,8 +27,11 @@ import { useCart } from "@/contexts/CartContext"
 import { useAuth } from "@/contexts/AuthContext"
 // import { useToast } from "@/hooks/use-toast"
 
+
+
 export default function ProductPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = React.use(params);
+  const router = useRouter();
   const { addToCart, isLoading: cartLoading } = useCart();
   const { user } = useAuth();
   // const { toast } = useToast();
@@ -52,10 +57,10 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
   }, [id])
 
   useEffect(() => {
-    if (user && product) {
-      loadUserReview()
+    if (user && reviews.length > 0) {
+      extractUserReview()
     }
-  }, [user, product])
+  }, [user, reviews])
 
   const loadProduct = async () => {
     try {
@@ -65,6 +70,11 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
         // Load related products
         const related = await productService.getRelatedProducts(productData.id, productData.category, 4)
         setRelatedProducts(related)
+        
+        // Prefetch related products for instant navigation
+        related.forEach(relatedProduct => {
+          router.prefetch(`/products/${relatedProduct.id}`)
+        })
       }
     } catch (error) {
       console.error("Error loading product:", error)
@@ -82,20 +92,26 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
     }
   }
 
-  const loadUserReview = async () => {
+  const extractUserReview = () => {
     if (!user) return
     
-    try {
-      const userReviewData = await reviewService.getUserReview(parseInt(id), user.user_id || user.id)
-      setUserReview(userReviewData)
-      if (userReviewData) {
-        setReviewFormData({
-          rating: userReviewData.rating,
-          reviewText: userReviewData.review_text || ""
-        })
-      }
-    } catch (error) {
-      console.error("Error loading user review:", error)
+    // Find user's review from already loaded reviews (no API call needed!)
+    const userReviewData = reviews.find(review => 
+      review.user_id === (user.user_id || user.id)
+    )
+    
+    setUserReview(userReviewData || null)
+    if (userReviewData) {
+      setReviewFormData({
+        rating: userReviewData.rating,
+        reviewText: userReviewData.review_text || ""
+      })
+    } else {
+      // Reset form if no existing review
+      setReviewFormData({
+        rating: 5,
+        reviewText: ""
+      })
     }
   }
 
@@ -330,9 +346,8 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
 
       await reviewService.createOrUpdateReview(reviewData)
       
-      // Reload reviews and user review
+      // Reload reviews (this will automatically update user review via extractUserReview)
       await loadReviews()
-      await loadUserReview()
       
       // Close form
       setShowReviewForm(false)
@@ -383,10 +398,8 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
     try {
       await reviewService.deleteReview(userReview.id, user.user_id || user.id)
       
-      // Reload reviews and clear user review
+      // Reload reviews (this will automatically clear user review via extractUserReview)
       await loadReviews()
-      setUserReview(null)
-      setReviewFormData({ rating: 5, reviewText: "" })
       setShowReviewForm(false)
       
       // Show success notification
@@ -677,25 +690,25 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
             <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 gap-2 h-auto p-1 bg-white/80 backdrop-blur-sm rounded-xl shadow-lg">
               <TabsTrigger 
                 value="description" 
-                className="text-xs sm:text-sm font-medium py-3 px-2 rounded-lg data-[state=active]:bg-green-500 data-[state=active]:text-white data-[state=active]:shadow-md transition-all duration-200"
+                className="text-xs sm:text-sm font-medium py-3 px-2 rounded-lg data-[state=active]:bg-[#50A41C] data-[state=active]:text-white data-[state=active]:shadow-md transition-all duration-200"
               >
                 Description
               </TabsTrigger>
               <TabsTrigger 
                 value="ingredients" 
-                className="text-xs sm:text-sm font-medium py-3 px-2 rounded-lg data-[state=active]:bg-green-500 data-[state=active]:text-white data-[state=active]:shadow-md transition-all duration-200"
+                className="text-xs sm:text-sm font-medium py-3 px-2 rounded-lg data-[state=active]:bg-[#50A41C] data-[state=active]:text-white data-[state=active]:shadow-md transition-all duration-200"
               >
                 Ingredients
               </TabsTrigger>
               <TabsTrigger 
                 value="usage" 
-                className="text-xs sm:text-sm font-medium py-3 px-2 rounded-lg data-[state=active]:bg-green-500 data-[state=active]:text-white data-[state=active]:shadow-md transition-all duration-200"
+                className="text-xs sm:text-sm font-medium py-3 px-2 rounded-lg data-[state=active]:bg-[#50A41C] data-[state=active]:text-white data-[state=active]:shadow-md transition-all duration-200"
               >
                 How to Use
               </TabsTrigger>
               <TabsTrigger 
                 value="reviews" 
-                className="text-xs sm:text-sm font-medium py-3 px-2 rounded-lg data-[state=active]:bg-green-500 data-[state=active]:text-white data-[state=active]:shadow-md transition-all duration-200"
+                className="text-xs sm:text-sm font-medium py-3 px-2 rounded-lg data-[state=active]:bg-[#50A41C] data-[state=active]:text-white data-[state=active]:shadow-md transition-all duration-200"
               >
                 Reviews
               </TabsTrigger>
@@ -940,7 +953,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
           <h2 className="text-2xl font-bold mb-8">Related Products</h2>
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {relatedProducts.map((relatedProduct) => (
-              <Link key={relatedProduct.id} href={`/products/${relatedProduct.id}`}>
+              <Link key={relatedProduct.id} href={`/products/${relatedProduct.id}`} prefetch={true}>
                 <div className="glass-product-card product-card-hover cursor-pointer">
                   <div className="p-0">
                     <Image

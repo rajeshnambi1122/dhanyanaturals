@@ -46,10 +46,16 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         throw new Error('User not authenticated');
       }
 
+      // Update cart in database
       await userDataService.addToCart(user.id, productId, quantity);
-      await refreshCart();
-      // Refresh AuthContext user data to sync with cart page
-      await refreshUser();
+      
+      // Get updated user data (includes cart_items)
+      const userData = await userDataService.getUserData(user.id);
+      if (userData?.cart_items) {
+        setCartItems(userData.cart_items);
+        // Only refresh AuthContext if needed
+        await refreshUser();
+      }
     } catch (error) {
       console.error('Error adding to cart:', error);
       throw error;
@@ -114,15 +120,19 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const cartCount = cartItems.reduce((total, item) => total + item.quantity, 0);
 
-  // Sync cart items with user data from AuthContext
+  // Sync cart items with user data from AuthContext (debounced)
   useEffect(() => {
-    if (!authLoading) {
-      if (user && user.cart_items) {
-        setCartItems(user.cart_items || []);
-      } else {
-        setCartItems([]);
+    const timeoutId = setTimeout(() => {
+      if (!authLoading) {
+        if (user && user.cart_items) {
+          setCartItems(user.cart_items || []);
+        } else {
+          setCartItems([]);
+        }
       }
-    }
+    }, 100); // Small delay to batch updates
+
+    return () => clearTimeout(timeoutId);
   }, [user, authLoading]);
 
   const value = {
