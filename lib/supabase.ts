@@ -978,13 +978,29 @@ export const storageService = {
   // Upload image to Supabase Storage
   async uploadImage(file: File, bucket: string = 'product-images'): Promise<string> {
     try {
-      // Generate unique filename
-      const fileExt = file.name.split('.').pop()
-      const fileName = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}.${fileExt}`
-      const filePath = `products/${fileName}`
+      // Preserve original filename (safely sanitized)
+      const sanitizeFileName = (name: string): string => {
+        const trimmed = name.trim().toLowerCase()
+        // Replace unsafe chars, collapse repeats, trim leading dots/spaces
+        return trimmed
+          .replace(/[^a-z0-9._-]+/g, '-')
+          .replace(/-+/g, '-')
+          .replace(/^\.+/, '')
+          .slice(0, 120)
+      }
+
+      const originalName = file.name || `upload-${Date.now()}`
+      const lastDotIndex = originalName.lastIndexOf('.')
+      const baseName = lastDotIndex > 0 ? originalName.substring(0, lastDotIndex) : originalName
+      const ext = lastDotIndex > 0 ? originalName.substring(lastDotIndex + 1) : 'bin'
+
+      const safeBase = sanitizeFileName(baseName) || `file-${Date.now()}`
+      const safeExt = sanitizeFileName(ext) || 'bin'
+      let fileName = `${safeBase}.${safeExt}`
+      let filePath = `products/${fileName}`
 
       // Upload file to Supabase Storage
-      const { data, error } = await supabase.storage
+      let { data, error } = await supabase.storage
         .from(bucket)
         .upload(filePath, file, {
           cacheControl: '3600',
@@ -992,7 +1008,25 @@ export const storageService = {
         })
 
       if (error) {
-        throw new Error(`Upload failed: ${error.message}`)
+        // If file exists, append timestamp to keep name as close as possible
+        // Supabase returns 409 conflict when the object already exists
+        const isConflict = (error as any)?.statusCode === 409 || /exists/i.test((error as any)?.message || '')
+        if (!isConflict) {
+          throw new Error(`Upload failed: ${error.message}`)
+        }
+
+        fileName = `${safeBase}-${Date.now()}.${safeExt}`
+        filePath = `products/${fileName}`
+        const retry = await supabase.storage
+          .from(bucket)
+          .upload(filePath, file, {
+            cacheControl: '3600',
+            upsert: false
+          })
+        if (retry.error) {
+          throw new Error(`Upload failed: ${retry.error.message}`)
+        }
+        data = retry.data
       }
 
       // Get public URL
