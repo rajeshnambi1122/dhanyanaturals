@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label"
 import { Leaf, ShoppingBag, Star, Search, Grid, List, Filter, SlidersHorizontal, Heart, Sparkles } from "lucide-react"
 import { productService, type Product } from "@/lib/supabase"
 
+
 const categories = [
   { id: "all", name: "All Products", icon: "🌟" },
   { id: "soaps", name: "Soaps", icon: "🧼" },
@@ -119,11 +120,11 @@ export default function ProductsPage() {
   return (
     <div className="min-h-screen glass-background page-transition">
         {/* Page Header */}
-        <div className="text-center mb-12 animate-fade-in">
-          <h1 className="text-5xl font-bold mb-4">
+        <div className="text-center mb-1 mt-6 sm:mb-12 animate-fade-in px-2">
+          <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-3 sm:mb-4">
             Our <span className="gradient-text">Products</span>
           </h1>
-          <p className="text-xl text-gray-600 max-w-2xl mx-auto">
+          <p className="text-sm sm:text-base md:text-xl text-gray-600 max-w-2xl mx-auto">
             Discover our carefully curated collection of natural and organic products
           </p>
         </div>
@@ -275,7 +276,7 @@ export default function ProductsPage() {
                             alt={product.name}
                             width={300}
                             height={300}
-                            className="w-full h-64 object-cover transition-transform duration-500 group-hover:scale-110"
+                            className="block w-full h-64 object-cover transition-transform duration-500 group-hover:scale-110"
                           />
                           <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                           {!product.in_stock && (
@@ -344,7 +345,7 @@ export default function ProductsPage() {
                             alt={product.name}
                             width={150}
                             height={150}
-                            className="w-32 h-32 object-cover transition-transform duration-300 group-hover:scale-105"
+                            className="block w-32 h-32 object-cover transition-transform duration-300 group-hover:scale-105"
                           />
                           {!product.in_stock && (
                             <div className="absolute inset-0 bg-black/50 flex items-center justify-center rounded-lg">

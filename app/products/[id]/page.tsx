@@ -25,6 +25,7 @@ import {
 import { productService, userDataService, reviewService, supabase, type Product, type Review } from "@/lib/supabase"
 import { useCart } from "@/contexts/CartContext"
 import { useAuth } from "@/contexts/AuthContext"
+
 // import { useToast } from "@/hooks/use-toast"
 
 
@@ -506,21 +507,21 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
 
             {/* Image Thumbnails */}
             {productImages.length > 1 && (
-              <div className="flex gap-1 justify-center">
+              <div className="flex gap-1 sm:gap-2 justify-center flex-wrap">
                 {productImages.map((image, index) => (
                   <button
                     key={index}
                     onClick={() => setSelectedImage(index)}
-                    className={`glass-card p-1 w-20 h-20 rounded-lg overflow-hidden ${
+                    className={`relative w-16 h-16 sm:w-20 sm:h-20 rounded-lg overflow-hidden ${
                       selectedImage === index ? "ring-2 ring-green-500" : ""
                     }`}
                   >
                     <Image
                       src={image || "/placeholder.svg"}
                       alt={`${product.name} ${index + 1}`}
-                      width={60}
-                      height={60}
-                      className="object-cover rounded"
+                      fill
+                      className="block object-cover"
+                      sizes="(max-width: 640px) 64px, 80px"
                     />
                   </button>
                 ))}

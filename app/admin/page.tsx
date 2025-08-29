@@ -396,7 +396,7 @@ export default function AdminDashboard() {
   // Show loading spinner while checking authentication
   if (authLoading) {
     return (
-      <div className="min-h-screen glass-background flex items-center justify-center">
+      <div className="glass-background flex items-center justify-center min-h-screen">
         <div className="glass-card p-8 text-center">
           <div className="h-12 w-12 mx-auto mb-4 animate-spin rounded-full border-4 border-green-600 border-t-transparent" />
           <h2 className="text-xl font-semibold mb-2">Checking Authentication...</h2>
@@ -409,7 +409,7 @@ export default function AdminDashboard() {
   // Show unauthorized access message
   if (!isAuthorized) {
     return (
-      <div className="min-h-screen glass-background flex items-center justify-center">
+      <div className="glass-background flex items-center justify-center min-h-screen">
         <div className="glass-card p-8 text-center max-w-md">
           <AlertTriangle className="h-16 w-16 text-red-500 mx-auto mb-4" />
           <h2 className="text-2xl font-bold mb-4 text-red-600">Access Denied</h2>
@@ -435,7 +435,7 @@ export default function AdminDashboard() {
 
   if (loading) {
     return (
-      <div className="min-h-screen glass-background">
+      <div className="glass-background pb-8">
         <div className="container mx-auto px-4 py-8">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
             {[...Array(4)].map((_, i) => (
@@ -450,7 +450,7 @@ export default function AdminDashboard() {
   }
 
   return (
-    <div className="min-h-screen glass-background">
+    <div className="glass-background pb-8">
       <div className="container mx-auto px-4 py-8">
         <div className="mb-8">
           <h2 className="text-2xl md:text-3xl font-bold mb-2">Dashboard</h2>
@@ -613,7 +613,8 @@ export default function AdminDashboard() {
                                     <img
                                       src={preview}
                                       alt={`Preview ${index + 1}`}
-                                      className="w-full h-full object-cover"
+                                      className="block w-full h-full object-cover"
+                                      loading="lazy"
                                     />
                                     <button
                                       type="button"
@@ -990,6 +991,7 @@ export default function AdminDashboard() {
                                     src={img}
                                     alt={`${product.name} ${idx + 2}`}
                                     className="w-12 h-12 object-cover rounded-md border border-white/20 flex-shrink-0"
+                                    loading="lazy"
                                   />
                                 ))}
                                 {product.images.length > 5 && (

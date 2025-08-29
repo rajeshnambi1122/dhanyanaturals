@@ -1,5 +1,7 @@
 # Admin Authentication Setup
 
+[![Made with Supabase](https://supabase.com/badge-made-with-supabase.svg)](https://supabase.com)
+
 ## Overview
 The admin page now has role-based access control. Only users with the "admin" role can access the admin dashboard.
 
