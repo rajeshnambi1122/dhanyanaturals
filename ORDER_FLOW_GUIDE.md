@@ -16,7 +16,9 @@ This application now has a fully functional order flow system that allows custom
 - View all items added to cart
 - Update quantities or remove items
 - See order summary with subtotal, shipping, and total
-- Free shipping for orders above ₹500
+- Free shipping for orders above ₹999
+- ₹50 shipping for Tamil Nadu
+- ₹80 shipping for rest of India
 - **"Proceed to Checkout"** button navigates to checkout
 
 ### 3. Checkout Process (`/checkout`)

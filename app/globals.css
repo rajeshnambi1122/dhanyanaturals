@@ -60,6 +60,34 @@
 }
 
 /* Modern Glass Design System with Advanced Animations */
+
+/* Select Dropdown Styling */
+[data-radix-select-content] {
+  z-index: 50;
+  max-width: 100vw;
+  overflow: hidden;
+}
+
+[data-radix-select-item] {
+  cursor: pointer;
+  padding: 8px 12px;
+  transition: background-color 0.2s ease;
+}
+
+[data-radix-select-item]:hover {
+  background-color: #f3f4f6;
+}
+
+[data-radix-select-item][data-highlighted] {
+  background-color: #50A41C;
+  color: white;
+}
+
+[data-radix-select-item][data-state="checked"] {
+  background-color: #50A41C;
+  color: white;
+}
+
 .glass-background {
   background: linear-gradient(
     135deg,

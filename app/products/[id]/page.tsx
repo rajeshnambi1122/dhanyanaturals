@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect } from "react"
+import React, { useState, useEffect, useRef } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -39,6 +39,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
   const [product, setProduct] = useState<Product | null>(null)
   const [relatedProducts, setRelatedProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
+  const [dataLoaded, setDataLoaded] = useState(false) // Prevent duplicate API calls
   const [selectedImage, setSelectedImage] = useState(0)
   const [quantity, setQuantity] = useState(1)
   const [isWishlisted, setIsWishlisted] = useState(false)
@@ -51,11 +52,18 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
     rating: 5,
     reviewText: ""
   })
+  
+  const loadingRef = useRef(false) // Prevent race conditions
 
   useEffect(() => {
+    // Prevent duplicate API calls in React Strict Mode
+    if (dataLoaded || !id || loadingRef.current) return;
+    
+    console.log(`[Product] useEffect triggered for ID: ${id}`);
+    loadingRef.current = true;
     loadProduct()
     loadReviews()
-  }, [id])
+  }, [id, dataLoaded])
 
   useEffect(() => {
     if (user && reviews.length > 0) {
@@ -65,6 +73,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
 
   const loadProduct = async () => {
     try {
+      console.log(`[Product] Loading product ID: ${id}`);
       const productData = await productService.getProductById(Number.parseInt(id))
       if (productData) {
         setProduct(productData)
@@ -81,11 +90,13 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
       console.error("Error loading product:", error)
     } finally {
       setLoading(false)
+      setDataLoaded(true) // Mark as loaded to prevent duplicate calls
     }
   }
 
   const loadReviews = async () => {
     try {
+      console.log(`[Product] Loading reviews for product ID: ${id}`);
       const reviewsData = await reviewService.getProductReviews(parseInt(id))
       setReviews(reviewsData)
     } catch (error) {

@@ -342,8 +342,21 @@ export const orderService = {
       serverCalculatedTotal += itemTotal;
     }
 
-    // Calculate shipping server-side
-    const shipping = serverCalculatedTotal > 499 ? 0 : 50;
+    // Calculate shipping server-side based on state and order amount
+    const calculateShipping = (state: string, orderTotal: number) => {
+      if (orderTotal > 999) return 0; // Free shipping above ₹999
+      
+      // State-based shipping
+      if (state.toLowerCase() === 'tamil nadu' || state.toLowerCase() === 'tn') {
+        return 50; // ₹50 for Tamil Nadu
+      } else {
+        return 80; // ₹80 for rest of India
+      }
+    };
+
+    // Get shipping address state from order
+    const shippingState = order.shipping_address?.state || 'Unknown';
+    const shipping = calculateShipping(shippingState, serverCalculatedTotal);
     const finalTotal = serverCalculatedTotal + shipping;
 
     // 🚨 SECURITY CHECK: Compare with client-sent total

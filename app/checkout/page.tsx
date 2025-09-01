@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { userDataService, productService, orderService } from "@/lib/supabase";
@@ -31,6 +31,7 @@ interface CustomerDetails {
 export default function CheckoutPage() {
   const [cartItems, setCartItems] = useState<CartItemWithDetails[]>([]);
   const [loading, setLoading] = useState(true);
+  const [dataLoaded, setDataLoaded] = useState(false); // Prevent duplicate API calls
   const [submitting, setSubmitting] = useState(false);
   const [orderSuccess, setOrderSuccess] = useState(false);
   const [orderId, setOrderId] = useState<string | null>(null);
@@ -75,6 +76,9 @@ export default function CheckoutPage() {
     // Skip loading if we're already showing order success
     if (orderSuccess) return;
 
+    // Prevent duplicate API calls
+    if (dataLoaded) return;
+
     const loadCheckoutData = async () => {
       try {
         setLoading(true);
@@ -94,9 +98,12 @@ export default function CheckoutPage() {
           return;
         }
 
-        // Get product details for cart items
+        // Get product details for cart items - only fetch once
         const productIds = cartItems.map((item: CartItem) => item.product_id);
         const uniqueProductIds: number[] = Array.from(new Set(productIds));
+        
+        // Single API call to get all products at once
+        console.log(`[Checkout] Fetching ${uniqueProductIds.length} products in single API call:`, uniqueProductIds);
         const products = await productService.getProductsByIds(uniqueProductIds);
         
         const productMap = products.reduce((acc, product) => {
@@ -119,6 +126,7 @@ export default function CheckoutPage() {
         });
         
         setCartItems(cartWithDetails);
+        setDataLoaded(true); // Mark data as loaded to prevent duplicate calls
       } catch (error) {
         console.error('Error loading checkout data:', error);
       } finally {
@@ -126,13 +134,31 @@ export default function CheckoutPage() {
       }
     };
 
+    // Only load data once when user changes
     loadCheckoutData();
-  }, [user, authLoading, router, orderSuccess]);
+  }, [user?.id, authLoading]); // Simplified dependencies
 
-  // Calculate totals
-  const subtotal = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const shipping = subtotal > 499 ? 0 : 50;
-  const total = subtotal + shipping;
+  // Calculate shipping based on state and order amount
+  const calculateShipping = (state: string, orderTotal: number) => {
+    if (orderTotal > 999) return 0; // Free shipping above ₹999
+    
+    // State-based shipping
+    if (state.toLowerCase() === 'tamil nadu' || state.toLowerCase() === 'tn') {
+      return 50; // ₹50 for Tamil Nadu
+    } else {
+      return 80; // ₹80 for rest of India
+    }
+  };
+
+  // Calculate totals with memoization to prevent unnecessary recalculations
+  const { subtotal, shipping, total } = useMemo(() => {
+    const subtotal = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
+    const shipping = calculateShipping(shippingAddress.state, subtotal);
+    const total = subtotal + shipping;
+    return { subtotal, shipping, total };
+  }, [cartItems, shippingAddress.state]);
+
+  // Shipping is now automatically recalculated via useMemo when state or cart changes
 
   // Handle form submission
   const handleSubmitOrder = async () => {
@@ -341,6 +367,25 @@ export default function CheckoutPage() {
           <h1 className="text-2xl sm:text-3xl font-bold gradient-text">Checkout</h1>
         </div>
 
+        {/* Shipping Information Banner */}
+        <div className="glass-card p-4 mb-6 bg-blue-50 border-blue-200">
+          <div className="flex items-start gap-3">
+            <div className="text-blue-600 mt-1">
+              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <div className="text-sm text-blue-800">
+              <p className="font-medium mb-1">🚚 Shipping Information</p>
+              <ul className="space-y-1 text-xs">
+                <li>• <strong>Free shipping</strong> for orders above ₹999</li>
+                <li>• <strong>₹50</strong> for Tamil Nadu</li>
+                <li>• <strong>₹80</strong> for rest of India</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
           {/* Checkout Form */}
           <div className="lg:col-span-2 space-y-6">
@@ -422,13 +467,49 @@ export default function CheckoutPage() {
                   </div>
                   <div>
                     <Label htmlFor="state">State *</Label>
-                    <Input
-                      id="state"
-                      value={shippingAddress.state}
-                      onChange={(e) => setShippingAddress(prev => ({ ...prev, state: e.target.value }))}
-                      className="glass-input"
-                      placeholder="State"
-                    />
+                                         <Select value={shippingAddress.state} onValueChange={(value) => setShippingAddress(prev => ({ ...prev, state: value }))}>
+                       <SelectTrigger className="glass-input w-full">
+                         <SelectValue placeholder="Select your state" />
+                       </SelectTrigger>
+                                              <SelectContent className="w-[var(--radix-select-trigger-width)] bg-white border border-gray-200 rounded-lg shadow-lg max-h-[300px] overflow-y-auto">
+                         <SelectItem value="Andhra Pradesh">Andhra Pradesh</SelectItem>
+                        <SelectItem value="Arunachal Pradesh">Arunachal Pradesh</SelectItem>
+                        <SelectItem value="Assam">Assam</SelectItem>
+                        <SelectItem value="Bihar">Bihar</SelectItem>
+                        <SelectItem value="Chhattisgarh">Chhattisgarh</SelectItem>
+                        <SelectItem value="Goa">Goa</SelectItem>
+                        <SelectItem value="Gujarat">Gujarat</SelectItem>
+                        <SelectItem value="Haryana">Haryana</SelectItem>
+                        <SelectItem value="Himachal Pradesh">Himachal Pradesh</SelectItem>
+                        <SelectItem value="Jharkhand">Jharkhand</SelectItem>
+                        <SelectItem value="Karnataka">Karnataka</SelectItem>
+                        <SelectItem value="Kerala">Kerala</SelectItem>
+                        <SelectItem value="Madhya Pradesh">Madhya Pradesh</SelectItem>
+                        <SelectItem value="Maharashtra">Maharashtra</SelectItem>
+                        <SelectItem value="Manipur">Manipur</SelectItem>
+                        <SelectItem value="Meghalaya">Meghalaya</SelectItem>
+                        <SelectItem value="Mizoram">Mizoram</SelectItem>
+                        <SelectItem value="Nagaland">Nagaland</SelectItem>
+                        <SelectItem value="Odisha">Odisha</SelectItem>
+                        <SelectItem value="Punjab">Punjab</SelectItem>
+                        <SelectItem value="Rajasthan">Rajasthan</SelectItem>
+                        <SelectItem value="Sikkim">Sikkim</SelectItem>
+                        <SelectItem value="Tamil Nadu">Tamil Nadu</SelectItem>
+                        <SelectItem value="Telangana">Telangana</SelectItem>
+                        <SelectItem value="Tripura">Tripura</SelectItem>
+                        <SelectItem value="Uttar Pradesh">Uttar Pradesh</SelectItem>
+                        <SelectItem value="Uttarakhand">Uttarakhand</SelectItem>
+                        <SelectItem value="West Bengal">West Bengal</SelectItem>
+                        <SelectItem value="Delhi">Delhi</SelectItem>
+                        <SelectItem value="Jammu and Kashmir">Jammu and Kashmir</SelectItem>
+                        <SelectItem value="Ladakh">Ladakh</SelectItem>
+                        <SelectItem value="Chandigarh">Chandigarh</SelectItem>
+                        <SelectItem value="Dadra and Nagar Haveli and Daman and Diu">Dadra and Nagar Haveli and Daman and Diu</SelectItem>
+                        <SelectItem value="Lakshadweep">Lakshadweep</SelectItem>
+                        <SelectItem value="Puducherry">Puducherry</SelectItem>
+                        <SelectItem value="Andaman and Nicobar Islands">Andaman and Nicobar Islands</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -444,12 +525,12 @@ export default function CheckoutPage() {
                   </div>
                   <div>
                     <Label htmlFor="country">Country</Label>
-                    <Select value={shippingAddress.country} onValueChange={(value) => setShippingAddress(prev => ({ ...prev, country: value }))}>
-                      <SelectTrigger className="glass-input">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent className="glass-dropdown">
-                        <SelectItem value="India">India</SelectItem>
+                                         <Select value={shippingAddress.country} onValueChange={(value) => setShippingAddress(prev => ({ ...prev, country: value }))}>
+                       <SelectTrigger className="glass-input w-full">
+                         <SelectValue />
+                       </SelectTrigger>
+                                              <SelectContent className="w-[var(--radix-select-trigger-width)] bg-white border border-gray-200 rounded-lg shadow-lg max-h-[300px] overflow-y-auto">
+                         <SelectItem value="India">India</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -573,6 +654,17 @@ export default function CheckoutPage() {
                     <span>Shipping</span>
                     <span>{shipping === 0 ? "Free" : `₹${shipping.toFixed(2)}`}</span>
                   </div>
+                  {shipping > 0 && (
+                    <div className="text-xs text-gray-600 -mt-1 text-right">
+                      {shippingAddress.state && (
+                        <span>
+                          {shippingAddress.state.toLowerCase() === 'tamil nadu' || shippingAddress.state.toLowerCase() === 'tn' 
+                            ? '₹50 for Tamil Nadu' 
+                            : '₹80 for rest of India'}
+                        </span>
+                      )}
+                    </div>
+                  )}
                   <Separator />
                   <div className="flex justify-between font-semibold text-lg">
                     <span>Total</span>

@@ -21,6 +21,7 @@ export default function CartPage() {
   const fetchingRef = useRef(false);
   const userIdRef = useRef<string | null>(null);
   const initializationRef = useRef(false);
+  const productMap = useRef<Record<number, any>>({});
 
 
 
@@ -77,19 +78,21 @@ export default function CartPage() {
         const uniqueProductIds: number[] = Array.from(new Set(productIds));
         
         // Batch fetch all products
+        console.log(`[Cart] Fetching ${uniqueProductIds.length} products in single API call:`, uniqueProductIds);
         const products = await productService.getProductsByIds(uniqueProductIds);
         
-        // Create product lookup map
-        const productMap = products.reduce((acc, product) => {
+        // Create product lookup map and store in ref
+        const newProductMap = products.reduce((acc, product) => {
           if (product) {
             acc[product.id] = product;
           }
           return acc;
         }, {} as Record<number, any>);
+        productMap.current = newProductMap;
         
         // Map cart items with product details
         const cartWithDetails = cartItems.map((item: CartItem) => {
-          const product = productMap[item.product_id];
+          const product = newProductMap[item.product_id];
           return {
             ...item,
             product_name: product?.name || 'Unknown Product',
@@ -256,7 +259,15 @@ export default function CartPage() {
 
   const { subtotal, shipping, total } = useMemo(() => {
     const subtotal = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
-    const shipping = subtotal > 499 ? 0 : 50; // Free shipping above ₹500, otherwise ₹50
+    
+    // New shipping logic: Free above ₹999, ₹50 for TN, ₹80 for rest of India
+    let shipping = 0;
+    if (subtotal <= 999) {
+      // For now, we'll use a default shipping cost
+      // The actual state-based calculation will happen in checkout
+      shipping = 80; // Default to rest of India rate
+    }
+    
     const total = subtotal + shipping;
     return { subtotal, shipping, total };
   }, [cartItems]); 
@@ -439,9 +450,9 @@ export default function CartPage() {
                     </div>
                   </div>
 
-                  {subtotal < 500 && (
+                  {subtotal < 999 && (
                     <div className="mb-4 glass-badge bg-blue-500 p-3 rounded-lg text-xs sm:text-sm text-white">
-                      <span className="block sm:inline">Add ₹{(500 - subtotal).toFixed(2)} more</span>
+                      <span className="block sm:inline">Add ₹{(999 - subtotal).toFixed(2)} more</span>
                       <span className="block sm:inline"> for free shipping!</span>
                     </div>
                   )}
