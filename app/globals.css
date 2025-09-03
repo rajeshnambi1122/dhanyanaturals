@@ -88,6 +88,14 @@
   color: white;
 }
 
+/* Ensure Radix Dialog overlays/content sit above app chrome */
+[data-radix-dialog-overlay] {
+  z-index: 900;
+}
+[data-radix-dialog-content] {
+  z-index: 1000;
+}
+
 .glass-background {
   background: linear-gradient(
     135deg,

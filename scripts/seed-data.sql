@@ -4,7 +4,7 @@ TRUNCATE TABLE user_data, orders, products RESTART IDENTITY CASCADE;
 -- Insert sample products with comprehensive data
 INSERT INTO products (
     name, description, long_description, price, original_price, category, 
-    image_url, rating, reviews_count, stock_quantity, featured,
+    image_url, rating, reviews_count, stock_quantity, in_stock, featured,
     ingredients, benefits, how_to_use, weight, dimensions, shelf_life, tags
 ) VALUES
 (
@@ -13,7 +13,7 @@ INSERT INTO products (
     'Our Neem & Turmeric Soap is carefully handcrafted using traditional methods passed down through generations. This powerful combination of neem and turmeric provides natural antibacterial properties while being gentle on your skin. Perfect for daily use, this soap helps fight acne, reduces inflammation, and gives your skin a natural, healthy glow. Made with premium organic ingredients and free from harsh chemicals.',
     12.99, 15.99, 'soaps',
     '/placeholder.svg?height=500&width=500',
-    4.8, 124, 45, true,
+    4.8, 124, 45, true, true,
     ARRAY['Neem extract', 'Turmeric powder', 'Coconut oil', 'Olive oil', 'Shea butter', 'Essential oils'],
     ARRAY['Fights acne and blemishes', 'Natural antibacterial properties', 'Reduces inflammation', 'Gives natural glow', 'Suitable for all skin types'],
     'Wet your skin with warm water. Gently massage the soap to create a rich lather. Apply to face and body, avoiding the eye area. Rinse thoroughly with water. Use twice daily for best results.',
@@ -26,7 +26,7 @@ INSERT INTO products (
     'This premium herbal hair oil is a blend of 15 carefully selected traditional herbs known for their hair nourishing properties. Regular use promotes healthy hair growth, reduces hair fall, and adds natural shine to your hair. Our time-tested formula has been used for generations and is now available in a convenient modern packaging.',
     24.99, 29.99, 'hair-care',
     '/placeholder.svg?height=500&width=500',
-    4.9, 89, 23, true,
+    4.9, 89, 23, true, true,
     ARRAY['Coconut oil', 'Amla', 'Bhringraj', 'Fenugreek', 'Curry leaves', 'Hibiscus', 'Brahmi', 'Neem', 'Rosemary'],
     ARRAY['Promotes hair growth', 'Reduces hair fall', 'Strengthens hair roots', 'Adds natural shine', 'Prevents premature graying', 'Nourishes scalp'],
     'Apply oil to scalp and hair. Massage gently for 5-10 minutes. Leave for at least 30 minutes or overnight. Wash with mild shampoo. Use 2-3 times per week for best results.',
@@ -39,7 +39,7 @@ INSERT INTO products (
     'This traditional Ayurvedic face pack combines the power of natural clay with time-tested herbs to provide deep cleansing and nourishment to your skin. Regular use helps remove impurities, tighten pores, and give you a radiant complexion. Formulated according to ancient Ayurvedic principles for modern skincare needs.',
     18.99, 22.99, 'skin-care',
     '/placeholder.svg?height=500&width=500',
-    4.7, 156, 0, true,
+    4.7, 156, 0, false, false,
     ARRAY['Fullers earth', 'Turmeric', 'Sandalwood', 'Rose water', 'Neem powder', 'Multani mitti'],
     ARRAY['Deep cleansing', 'Removes impurities', 'Natural glow', 'Tightens pores', 'Suitable for all skin types', 'Anti-aging properties'],
     'Mix 2 tablespoons of face pack with rose water or milk to form a smooth paste. Apply evenly on clean face and neck. Leave for 15-20 minutes until dry. Rinse with lukewarm water. Use 2-3 times per week.',
@@ -52,7 +52,7 @@ INSERT INTO products (
     'Our organic shampoo bar is the perfect eco-friendly alternative to liquid shampoos. Made with natural ingredients and free from harsh chemicals, this concentrated bar lasts longer than traditional shampoos while being gentle on your hair and the environment. Perfect for travel and reducing plastic waste.',
     16.99, 19.99, 'shampoos',
     '/placeholder.svg?height=500&width=500',
-    4.6, 98, 67, true,
+    4.6, 98, 67, true, true,
     ARRAY['Coconut oil', 'Shea butter', 'Essential oils', 'Natural surfactants', 'Argan oil', 'Vitamin E'],
     ARRAY['Eco-friendly', 'Long lasting', 'Gentle cleansing', 'Chemical-free', 'Travel-friendly', 'Zero waste'],
     'Wet hair thoroughly. Rub the shampoo bar directly on wet hair or lather in hands first. Massage into scalp and hair. Rinse thoroughly. Store in a dry place between uses.',

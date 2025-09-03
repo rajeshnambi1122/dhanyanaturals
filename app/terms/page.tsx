@@ -132,11 +132,11 @@ export default function TermsPage() {
                   <Mail className="h-5 w-5 text-green-600" />
                   <div>
                     <p className="font-medium text-green-800">Email</p>
-                    <p className="text-green-700">rajeshnambi2016@gmail.com</p>
+                    <p className="text-green-700">dhanyanaturals1@gmail.com</p>
                   </div>
                 </div>
                 <p className="text-green-700 text-sm mt-4">
-                  For questions about these terms, contact us at: rajeshnambi2016@gmail.com
+                  For questions about these terms, contact us at: dhanyanaturals1@gmail.com
                 </p>
               </div>
             </section>

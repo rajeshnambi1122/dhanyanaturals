@@ -223,6 +223,7 @@ export const productService = {
       return []
     }
 
+    console.log(`Found ${data?.length || 0} featured products`)
     return data || []
   },
 

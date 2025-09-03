@@ -206,6 +206,20 @@ export default function CheckoutPage() {
       
       setOrderId(newOrder.id);
       setOrderSuccess(true);
+      // Fire and forget: send order placed email
+      try {
+        fetch('/api/email/placed', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            to: customerDetails.email,
+            orderId: newOrder.id,
+            items: orderData.items,
+            total: orderData.total_amount,
+            customerName: customerDetails.name,
+          }),
+        });
+      } catch {}
       
       // Scroll to top on mobile to show success message
       window.scrollTo({ top: 0, behavior: 'smooth' });

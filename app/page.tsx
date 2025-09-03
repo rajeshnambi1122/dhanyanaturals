@@ -52,7 +52,14 @@ const features = [
 
 export default async function HomePage() {
   // Fetch featured products from Supabase
-  const featuredProducts = await productService.getFeaturedProducts(4)
+  let featuredProducts = await productService.getFeaturedProducts(4)
+  
+  // Fallback: if no featured products, get the first 4 products
+  if (!featuredProducts || featuredProducts.length === 0) {
+    console.log('No featured products found, fetching regular products as fallback')
+    const allProducts = await productService.getProducts({ inStockOnly: true })
+    featuredProducts = allProducts.slice(0, 4)
+  }
 
   return (
     <div className="min-h-screen glass-background page-transition">
@@ -168,7 +175,7 @@ export default async function HomePage() {
             </Link>
           </div>
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-8 stagger-animation">
-            {featuredProducts.map((product, index) => (
+            {featuredProducts.length > 0 ? featuredProducts.map((product, index) => (
               <Link key={product.id} href={`/products/${product.id}`}>
                 <div className="glass-product-card product-card-hover cursor-pointer group">
                   <div className="p-0 relative overflow-hidden">
@@ -221,7 +228,22 @@ export default async function HomePage() {
                   </div>
                 </div>
               </Link>
-            ))}
+            )) : (
+              <div className="col-span-full text-center py-12">
+                <div className="text-gray-500 mb-4">
+                  <svg className="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                  </svg>
+                  <h3 className="text-lg font-semibold text-gray-600 mb-2">No Featured Products Yet</h3>
+                  <p className="text-gray-500 mb-4">We're working on adding some amazing featured products for you!</p>
+                  <Link href="/products">
+                    <Button className="glass-button">
+                      Browse All Products
+                    </Button>
+                  </Link>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </section>

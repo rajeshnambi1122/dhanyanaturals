@@ -76,12 +76,29 @@ export default function AdminDashboard() {
   const handleUpdateOrderStatus = async (orderId: number, newStatus: string) => {
     setUpdatingOrderStatus(true)
     try {
-      await orderService.updateOrderStatus(orderId, newStatus as Order["status"])
+      const updated = await orderService.updateOrderStatus(orderId, newStatus as Order["status"])
       
       // Refresh orders list
       const updatedOrders = await orderService.getOrders()
       setOrders(updatedOrders)
       
+      // Fire and forget: notify customer via email
+      try {
+        fetch('/api/email/status', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            to: updated?.customer_email,
+            orderId,
+            newStatus,
+            items: updated?.items,
+            total: updated?.total_amount,
+            customerName: updated?.customer_name,
+            trackingNumber: updated?.tracking_number,
+          }),
+        })
+      } catch {}
+
       // Close dialog
       setIsEditStatusOpen(false)
       setEditingOrder(null)
@@ -797,70 +814,7 @@ export default function AdminDashboard() {
                     </DialogContent>
                   </Dialog>
 
-                  {/* Edit Order Status Dialog */}
-                  <Dialog open={isEditStatusOpen} onOpenChange={setIsEditStatusOpen}>
-                    <DialogContent className="max-w-md w-[95vw] mx-auto glass-modal">
-                      <DialogHeader>
-                        <DialogTitle className="text-lg">Edit Order Status</DialogTitle>
-                      </DialogHeader>
-                      {editingOrder && (
-                        <div className="space-y-4">
-                          <div className="bg-gray-50 p-4 rounded-lg">
-                            <h4 className="font-semibold text-gray-800">Order #{editingOrder.id}</h4>
-                            <p className="text-sm text-gray-600">{editingOrder.customer_name}</p>
-                            <p className="text-sm font-medium text-green-600">₹{editingOrder.total_amount}</p>
-                          </div>
-
-                          <div>
-                            <Label className="text-sm font-medium text-gray-700 mb-3 block">Select New Status</Label>
-                            <div className="grid grid-cols-1 gap-2">
-                              {[
-                                { value: 'pending', label: 'Pending', color: 'bg-gray-100 text-gray-800 hover:bg-gray-200' },
-                                { value: 'processing', label: 'Processing', color: 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200' },
-                                { value: 'shipped', label: 'Shipped', color: 'bg-blue-100 text-blue-800 hover:bg-blue-200' },
-                                { value: 'delivered', label: 'Delivered', color: 'bg-green-100 text-green-800 hover:bg-green-200' },
-                                { value: 'cancelled', label: 'Cancelled', color: 'bg-red-100 text-red-800 hover:bg-red-200' }
-                              ].map((status) => (
-                                <Button
-                                  key={status.value}
-                                  variant="outline"
-                                  className={`justify-start h-auto p-3 ${status.color} ${
-                                    editingOrder.status === status.value ? 'ring-2 ring-green-500' : ''
-                                  }`}
-                                  onClick={() => handleUpdateOrderStatus(editingOrder.id, status.value)}
-                                  disabled={updatingOrderStatus || editingOrder.status === status.value}
-                                >
-                                  <div className="flex items-center justify-between w-full">
-                                    <span className="font-medium">{status.label}</span>
-                                    {editingOrder.status === status.value && (
-                                      <span className="text-xs bg-green-600 text-white px-2 py-1 rounded">Current</span>
-                                    )}
-                                    {updatingOrderStatus && (
-                                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-gray-600"></div>
-                                    )}
-                                  </div>
-                                </Button>
-                              ))}
-                            </div>
-                          </div>
-
-                          <div className="flex gap-3 pt-4">
-                            <Button 
-                              variant="outline" 
-                              className="flex-1" 
-                              onClick={() => {
-                                setIsEditStatusOpen(false)
-                                setEditingOrder(null)
-                              }}
-                              disabled={updatingOrderStatus}
-                            >
-                              Cancel
-                            </Button>
-                          </div>
-                        </div>
-                      )}
-                    </DialogContent>
-                  </Dialog>
+                  {/* Edit Order Status Dialog moved outside tabs (see below) */}
                 </div>
               </div>
               <div className="p-4 md:p-6">
@@ -1249,6 +1203,70 @@ export default function AdminDashboard() {
             </div>
           </TabsContent>
         </Tabs>
+        {/* Centralized Edit Order Status Dialog */}
+        <Dialog open={isEditStatusOpen} onOpenChange={setIsEditStatusOpen}>
+          <DialogContent className="max-w-md w-[95vw] mx-auto glass-modal z-[100]" data-radix-dialog-content>
+            <DialogHeader>
+              <DialogTitle className="text-lg">Edit Order Status</DialogTitle>
+            </DialogHeader>
+            {editingOrder && (
+              <div className="space-y-4">
+                <div className="bg-gray-50 p-4 rounded-lg">
+                  <h4 className="font-semibold text-gray-800">Order #{editingOrder.id}</h4>
+                  <p className="text-sm text-gray-600">{editingOrder.customer_name}</p>
+                  <p className="text-sm font-medium text-green-600">₹{editingOrder.total_amount}</p>
+                </div>
+
+                <div>
+                  <Label className="text-sm font-medium text-gray-700 mb-3 block">Select New Status</Label>
+                  <div className="grid grid-cols-1 gap-2">
+                    {[
+                      { value: 'pending', label: 'Pending', color: 'bg-gray-100 text-gray-800 hover:bg-gray-200' },
+                      { value: 'processing', label: 'Processing', color: 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200' },
+                      { value: 'shipped', label: 'Shipped', color: 'bg-blue-100 text-blue-800 hover:bg-blue-200' },
+                      { value: 'delivered', label: 'Delivered', color: 'bg-green-100 text-green-800 hover:bg-green-200' },
+                      { value: 'cancelled', label: 'Cancelled', color: 'bg-red-100 text-red-800 hover:bg-red-200' }
+                    ].map((status) => (
+                      <Button
+                        key={status.value}
+                        variant="outline"
+                        className={`justify-start h-auto p-3 ${status.color} ${
+                          editingOrder.status === status.value ? 'ring-2 ring-green-500' : ''
+                        }`}
+                        onClick={() => handleUpdateOrderStatus(editingOrder.id, status.value)}
+                        disabled={updatingOrderStatus || editingOrder.status === status.value}
+                      >
+                        <div className="flex items-center justify-between w-full">
+                          <span className="font-medium">{status.label}</span>
+                          {editingOrder.status === status.value && (
+                            <span className="text-xs bg-green-600 text-white px-2 py-1 rounded">Current</span>
+                          )}
+                          {updatingOrderStatus && (
+                            <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-gray-600"></div>
+                          )}
+                        </div>
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex gap-3 pt-4">
+                  <Button 
+                    variant="outline" 
+                    className="flex-1" 
+                    onClick={() => {
+                      setIsEditStatusOpen(false)
+                      setEditingOrder(null)
+                    }}
+                    disabled={updatingOrderStatus}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   )

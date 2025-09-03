@@ -12,7 +12,7 @@ export default function RefundPage() {
               <XCircle className="h-8 w-8 text-red-600" />
             </div>
             <h1 className="text-3xl sm:text-4xl font-bold gradient-text mb-2">Refund and Cancellation Policy</h1>
-            <p className="text-gray-600">Last updated: {new Date().toLocaleDateString()}</p>
+            <p className="text-gray-600">Last updated: 03/09/2025</p>
           </div>
 
           {/* Introduction */}
@@ -123,7 +123,7 @@ export default function RefundPage() {
                     <Mail className="h-5 w-5 text-gray-600" />
                     <div>
                       <p className="font-medium text-gray-800">Email</p>
-                      <p className="text-gray-700">rajeshnambi2016@gmail.com</p>
+                      <p className="text-gray-700">dhanyanaturals1@gmail.com</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
