@@ -5,11 +5,36 @@ import { Leaf, ShoppingBag, Star, Shield, Heart, Sparkles, Zap, Award } from "lu
 import { productService } from "@/lib/supabase"
 
 const categories = [
-  { name: "Soaps", icon: "🧼", count: 15, gradient: "from-blue-400 to-blue-600" },
-  { name: "Shampoos", icon: "🧴", count: 8, gradient: "from-purple-400 to-purple-600" },
-  { name: "Herbal Powders", icon: "🌿", count: 12, gradient: "from-green-400 to-green-600" },
-  { name: "Hair Care", icon: "💇‍♀️", count: 10, gradient: "from-pink-400 to-pink-600" },
-  { name: "Skin Care", icon: "✨", count: 18, gradient: "from-yellow-400 to-yellow-600" },
+  { 
+    name: "Soaps", 
+    image: "https://ccklbyexywvclddrqjwr.supabase.co/storage/v1/object/public/product-images/products/1756378335713-lohlfd4ei.png", 
+    count: 15, 
+    gradient: "from-blue-400 to-blue-600" 
+  },
+  { 
+    name: "Shampoos", 
+    image: "https://ccklbyexywvclddrqjwr.supabase.co/storage/v1/object/public/product-images/products/1756347564729-vq72fshtn.png", 
+    count: 8, 
+    gradient: "from-purple-400 to-purple-600" 
+  },
+  { 
+    name: "Herbal Powders", 
+    image: "https://ccklbyexywvclddrqjwr.supabase.co/storage/v1/object/public/product-images/products/nalangumaavu1-min.jpg", 
+    count: 12, 
+    gradient: "from-green-400 to-green-600" 
+  },
+  { 
+    name: "Hair Care", 
+    image: "https://ccklbyexywvclddrqjwr.supabase.co/storage/v1/object/public/product-images/products/neemcomb1.png", 
+    count: 10, 
+    gradient: "from-pink-400 to-pink-600" 
+  },
+  { 
+    name: "Skin Care", 
+    image: "https://ccklbyexywvclddrqjwr.supabase.co/storage/v1/object/public/product-images/products/bodybutter1-min.jpg", 
+    count: 18, 
+    gradient: "from-yellow-400 to-yellow-600" 
+  },
 ]
 
 const features = [
@@ -143,8 +168,14 @@ export default async function HomePage() {
             {categories.map((category, index) => (
               <Link key={category.name} href={`/products?category=${category.name.toLowerCase().replace(" ", "-")}`}>
                 <div className="glass-card p-6 text-center cursor-pointer floating hover-lift group">
-                  <div className="text-4xl mb-3 group-hover:scale-110 transition-transform duration-300">
-                    {category.icon}
+                  <div className="relative w-20 h-20 mx-auto mb-3 group-hover:scale-110 transition-transform duration-300">
+                    <Image
+                      src={category.image}
+                      alt={category.name}
+                      width={80}
+                      height={80}
+                      className="w-full h-full object-cover rounded-full"
+                    />
                   </div>
                   <h3 className="font-semibold mb-1 group-hover:text-green-600 transition-colors">{category.name}</h3>
                   <p className="text-sm text-gray-500">{category.count} products</p>
