@@ -54,6 +54,7 @@ export default function CheckoutPage() {
   });
 
   const [paymentMethod, setPaymentMethod] = useState('cod');
+  const [processingPayment, setProcessingPayment] = useState(false);
   const [notes, setNotes] = useState('');
 
   // Scroll to top when order success is shown
@@ -160,6 +161,45 @@ export default function CheckoutPage() {
 
   // Shipping is now automatically recalculated via useMemo when state or cart changes
 
+  // Handle online payment with Zoho
+  const handleOnlinePayment = async (orderData: any) => {
+    setProcessingPayment(true);
+    try {
+      // Create payment with Zoho
+      const paymentResponse = await fetch('/api/payments/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount: total,
+          orderId: `ORDER_${Date.now()}`, // Temporary order ID
+          customerDetails: customerDetails,
+          returnUrl: `${window.location.origin}/payment/success`
+        })
+      });
+
+      if (!paymentResponse.ok) {
+        throw new Error('Failed to create payment');
+      }
+
+      const paymentData = await paymentResponse.json();
+      
+      if (paymentData.success && paymentData.payment_url) {
+        // Store order data temporarily for after payment
+        sessionStorage.setItem('pendingOrder', JSON.stringify(orderData));
+        sessionStorage.setItem('paymentId', paymentData.payment_id);
+        
+        // Redirect to Zoho payment page
+        window.location.href = paymentData.payment_url;
+      } else {
+        throw new Error('Invalid payment response');
+      }
+    } catch (error) {
+      console.error('Payment error:', error);
+      alert('Failed to initiate payment. Please try again or choose Cash on Delivery.');
+      setProcessingPayment(false);
+    }
+  };
+
   // Handle form submission
   const handleSubmitOrder = async () => {
     if (!user) return;
@@ -183,7 +223,7 @@ export default function CheckoutPage() {
         customer_email: customerDetails.email,
         customer_phone: customerDetails.phone,
         shipping_address: shippingAddress,
-        payment_method: paymentMethod === 'cod' ? 'Cash on Delivery' : 'Credit Card',
+        payment_method: paymentMethod === 'cod' ? 'Cash on Delivery' : 'Zoho Online Payment',
         items: cartItems.map(item => ({
           product_id: item.product_id,
           product_name: item.product_name,
@@ -196,7 +236,13 @@ export default function CheckoutPage() {
         notes: notes || undefined
       };
 
-      // Create order with server-side price validation
+      // Handle online payment
+      if (paymentMethod === 'online') {
+        await handleOnlinePayment(orderData);
+        return; // Exit here, completion will be handled by payment success page
+      }
+
+      // Handle COD - create order directly
       const newOrder = await orderService.createOrder(orderData);
       
       // Clear cart after successful order
@@ -586,9 +632,10 @@ export default function CheckoutPage() {
                   </div>
                   
                   <div 
-                    className={`p-4 glass-input rounded-lg cursor-pointer transition-colors opacity-50 ${
+                    className={`p-4 glass-input rounded-lg cursor-pointer transition-colors ${
                       paymentMethod === 'online' ? 'ring-2 ring-green-500 bg-green-50' : ''
                     }`}
+                    onClick={() => setPaymentMethod('online')}
                   >
                     <div className="flex items-center gap-3">
                       <input
@@ -596,13 +643,22 @@ export default function CheckoutPage() {
                         id="online"
                         name="payment"
                         value="online"
-                        disabled
+                        checked={paymentMethod === 'online'}
+                        onChange={(e) => setPaymentMethod(e.target.value)}
                         className="text-green-600"
                       />
-                      <label htmlFor="online" className="flex-1">
+                      <label htmlFor="online" className="flex-1 cursor-pointer">
                         <div className="font-medium">Online Payment</div>
-                        <div className="text-sm text-gray-600">Credit/Debit Card, UPI, Net Banking (Coming Soon)</div>
+                        <div className="text-sm text-gray-600">Credit/Debit Card, UPI, Net Banking via Zoho</div>
                       </label>
+                      <div className="text-right">
+                        <div className="text-xs text-green-600 font-medium">Secure & Fast</div>
+                        <div className="flex gap-1 mt-1">
+                          <span className="text-xs bg-blue-100 text-blue-800 px-1 rounded">UPI</span>
+                          <span className="text-xs bg-green-100 text-green-800 px-1 rounded">Cards</span>
+                          <span className="text-xs bg-purple-100 text-purple-800 px-1 rounded">Net Banking</span>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -691,15 +747,20 @@ export default function CheckoutPage() {
                   className="w-full glass-button py-3" 
                   size="lg"
                   onClick={handleSubmitOrder}
-                  disabled={submitting}
+                  disabled={submitting || processingPayment}
                 >
                   {submitting ? (
                     <>
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                       Placing Order...
                     </>
+                  ) : processingPayment ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Processing Payment...
+                    </>
                   ) : (
-                    'Place Order'
+                    paymentMethod === 'online' ? 'Pay Now' : 'Place Order'
                   )}
                 </Button>
 

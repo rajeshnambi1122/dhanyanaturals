@@ -450,6 +450,46 @@ export const orderService = {
     }
   },
 
+  // Update order payment status (for Zoho Payments webhook)
+  async updateOrderPaymentStatus(orderId: string, paymentData: {
+    payment_method?: string;
+    payment_id?: string;
+    payment_status?: string;
+    failure_reason?: string;
+    status?: string;
+  }) {
+    const updateData: any = {};
+    
+    if (paymentData.payment_method) {
+      updateData.payment_method = paymentData.payment_method;
+    }
+    
+    if (paymentData.payment_id) {
+      // Store payment details in notes field
+      updateData.notes = `Payment ID: ${paymentData.payment_id}${paymentData.failure_reason ? ` | Failure: ${paymentData.failure_reason}` : ''}`;
+    }
+    
+    if (paymentData.status) {
+      updateData.status = paymentData.status;
+    }
+    
+    updateData.updated_at = new Date().toISOString();
+
+    const { data, error } = await supabase
+      .from("orders")
+      .update(updateData)
+      .eq("id", orderId)
+      .select()
+      .single();
+
+    if (error) {
+      console.error("Error updating order payment status:", error);
+      throw new Error("Failed to update order payment status");
+    }
+
+    return data;
+  },
+
   // Update order status
   async updateOrderStatus(id: number, status: Order["status"], trackingNumber?: string) {
     const updates: any = { status, updated_at: new Date().toISOString() }
