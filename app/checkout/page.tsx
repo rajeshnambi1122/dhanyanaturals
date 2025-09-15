@@ -1,6 +1,6 @@
 "use client";
-import { useEffect, useState, useCallback, useMemo } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState, useCallback, useMemo, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { userDataService, productService, orderService } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
@@ -28,15 +28,22 @@ interface CustomerDetails {
   phone: string;
 }
 
-export default function CheckoutPage() {
+function CheckoutPageContent() {
+  const searchParams = useSearchParams();
   const [cartItems, setCartItems] = useState<CartItemWithDetails[]>([]);
   const [loading, setLoading] = useState(true);
   const [dataLoaded, setDataLoaded] = useState(false); // Prevent duplicate API calls
   const [submitting, setSubmitting] = useState(false);
   const [orderSuccess, setOrderSuccess] = useState(false);
   const [orderId, setOrderId] = useState<string | null>(null);
+  const [isBuyNow, setIsBuyNow] = useState(false);
   const { user, loading: authLoading, refreshUser } = useAuth();
   const router = useRouter();
+
+  // Check if this is a Buy Now checkout
+  const buyNowMode = searchParams.get('buyNow') === 'true';
+  const buyNowProductId = searchParams.get('product');
+  const buyNowQuantity = parseInt(searchParams.get('quantity') || '1');
 
   // Form states
   const [customerDetails, setCustomerDetails] = useState<CustomerDetails>({
@@ -91,42 +98,77 @@ export default function CheckoutPage() {
           phone: user.phone || ''
         });
 
-        // Load cart items
-        const cartItems = user.cart_items || [];
-        
-        if (cartItems.length === 0) {
-          router.push('/cart');
-          return;
-        }
-
-        // Get product details for cart items - only fetch once
-        const productIds = cartItems.map((item: CartItem) => item.product_id);
-        const uniqueProductIds: number[] = Array.from(new Set(productIds));
-        
-        // Single API call to get all products at once
-        console.log(`[Checkout] Fetching ${uniqueProductIds.length} products in single API call:`, uniqueProductIds);
-        const products = await productService.getProductsByIds(uniqueProductIds);
-        
-        const productMap = products.reduce((acc, product) => {
-          if (product) {
-            acc[product.id] = product;
+        if (buyNowMode && buyNowProductId) {
+          // Buy Now mode - load single product
+          setIsBuyNow(true);
+          console.log(`[Checkout] Buy Now mode for product ID: ${buyNowProductId}, quantity: ${buyNowQuantity}`);
+          
+          const product = await productService.getProductById(parseInt(buyNowProductId));
+          
+          if (!product) {
+            alert('Product not found');
+            router.push('/products');
+            return;
           }
-          return acc;
-        }, {} as Record<number, any>);
-        
-        const cartWithDetails = cartItems.map((item: CartItem) => {
-          const product = productMap[item.product_id];
-          return {
-            ...item,
-            product_name: product?.name || 'Unknown Product',
-            price: product?.price || 0,
-            image: product?.image_url || product?.image,
-            stock_quantity: product?.stock_quantity || 0,
-            in_stock: product?.in_stock || false,
+
+          if (!product.in_stock || product.stock_quantity < buyNowQuantity) {
+            alert('Product is out of stock or insufficient quantity available');
+            router.push(`/products/${buyNowProductId}`);
+            return;
+          }
+
+          const buyNowItem = {
+            product_id: product.id,
+            quantity: buyNowQuantity,
+            added_at: new Date().toISOString(),
+            product_name: product.name,
+            price: product.price,
+            image: product.image_url,
+            stock_quantity: product.stock_quantity,
+            in_stock: product.in_stock,
           };
-        });
+
+          setCartItems([buyNowItem]);
+        } else {
+          // Regular cart mode
+          setIsBuyNow(false);
+          const cartItems = user.cart_items || [];
+          
+          if (cartItems.length === 0) {
+            router.push('/cart');
+            return;
+          }
+
+          // Get product details for cart items - only fetch once
+          const productIds = cartItems.map((item: CartItem) => item.product_id);
+          const uniqueProductIds: number[] = Array.from(new Set(productIds));
+          
+          // Single API call to get all products at once
+          console.log(`[Checkout] Fetching ${uniqueProductIds.length} products in single API call:`, uniqueProductIds);
+          const products = await productService.getProductsByIds(uniqueProductIds);
+          
+          const productMap = products.reduce((acc, product) => {
+            if (product) {
+              acc[product.id] = product;
+            }
+            return acc;
+          }, {} as Record<number, any>);
+          
+          const cartWithDetails = cartItems.map((item: CartItem) => {
+            const product = productMap[item.product_id];
+            return {
+              ...item,
+              product_name: product?.name || 'Unknown Product',
+              price: product?.price || 0,
+              image: product?.image_url || product?.image,
+              stock_quantity: product?.stock_quantity || 0,
+              in_stock: product?.in_stock || false,
+            };
+          });
+          
+          setCartItems(cartWithDetails);
+        }
         
-        setCartItems(cartWithDetails);
         setDataLoaded(true); // Mark data as loaded to prevent duplicate calls
       } catch (error) {
         console.error('Error loading checkout data:', error);
@@ -245,10 +287,12 @@ export default function CheckoutPage() {
       // Handle COD - create order directly
       const newOrder = await orderService.createOrder(orderData);
       
-      // Clear cart after successful order
-      const userId = user.user_id || user.id;
-      await userDataService.clearCart(userId);
-      await refreshUser();
+      // Clear cart after successful order (only for regular cart checkout, not buy now)
+      if (!isBuyNow) {
+        const userId = user.user_id || user.id;
+        await userDataService.clearCart(userId);
+        await refreshUser();
+      }
       
       setOrderId(newOrder.id);
       setOrderSuccess(true);
@@ -418,13 +462,15 @@ export default function CheckoutPage() {
       <div className="container mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="flex items-center gap-4 mb-6 sm:mb-8">
-          <Link href="/cart">
+          <Link href={isBuyNow && buyNowProductId ? `/products/${buyNowProductId}` : "/cart"}>
             <Button variant="outline" size="sm" className="glass-input bg-transparent">
               <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Cart
+              {isBuyNow ? "Back to Product" : "Back to Cart"}
             </Button>
           </Link>
-          <h1 className="text-2xl sm:text-3xl font-bold gradient-text">Checkout</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold gradient-text">
+            {isBuyNow ? "Buy Now Checkout" : "Checkout"}
+          </h1>
         </div>
 
         {/* Shipping Information Banner */}
@@ -773,5 +819,20 @@ export default function CheckoutPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function CheckoutPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen glass-background flex items-center justify-center">
+        <div className="glass-card p-8 text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-green-600" />
+          <p className="text-gray-600">Loading checkout...</p>
+        </div>
+      </div>
+    }>
+      <CheckoutPageContent />
+    </Suspense>
   );
 }

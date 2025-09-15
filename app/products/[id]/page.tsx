@@ -194,8 +194,35 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
   };
 
   const handleBuyNow = () => {
-    // Buy now logic here
-    console.log(`Buy now: ${quantity} of ${product?.name}`)
+    if (!user) {
+      router.push('/login?redirect=' + encodeURIComponent(`/products/${id}`));
+      return;
+    }
+    
+    if (!product) return;
+
+    // Check stock
+    if (!product.in_stock || product.stock_quantity < quantity) {
+      const notification = document.createElement('div');
+      notification.className = 'fixed bottom-4 right-4 bg-red-500 text-white px-6 py-3 rounded-lg shadow-lg z-50 animate-slide-in';
+      notification.innerHTML = `
+        <div class="flex items-center gap-2">
+          <span>⚠️</span>
+          <div>
+            <div class="font-semibold">Out of Stock</div>
+            <div class="text-sm opacity-90">This product is out of stock or insufficient quantity available.</div>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(notification);
+      setTimeout(() => {
+        notification.remove();
+      }, 4000);
+      return;
+    }
+
+    // Redirect to checkout with buy now parameters
+    router.push(`/checkout?buyNow=true&product=${product.id}&quantity=${quantity}`);
   }
 
   const handleShare = async () => {
@@ -640,10 +667,10 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
                   onClick={handleBuyNow}
                   disabled={!product.in_stock}
                   variant="outline"
-                  className="flex-1 glass-input bg-transparent"
+                  className="flex-1 glass-input bg-transparent border-green-600 text-green-600 hover:bg-green-600 hover:text-white"
                   size="lg"
                 >
-                  Buy Now
+                   Buy Now
                 </Button>
               </div>
 
