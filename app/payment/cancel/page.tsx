@@ -1,12 +1,12 @@
 "use client"
 
-import { useEffect } from 'react'
+import { useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { XCircle, ArrowLeft, CreditCard } from 'lucide-react'
 import Link from 'next/link'
 
-export default function PaymentCancelPage() {
+function PaymentCancelContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const orderId = searchParams.get('order_id')
@@ -104,5 +104,20 @@ export default function PaymentCancelPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function PaymentCancelPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen glass-background flex items-center justify-center">
+        <div className="glass-card p-8 text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      </div>
+    }>
+      <PaymentCancelContent />
+    </Suspense>
   )
 }
