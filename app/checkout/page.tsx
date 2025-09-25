@@ -220,7 +220,9 @@ function CheckoutPageContent() {
       });
 
       if (!paymentResponse.ok) {
-        throw new Error('Failed to create payment');
+        const errorData = await paymentResponse.json().catch(() => ({}));
+        const errorMessage = errorData.error || 'Failed to create payment';
+        throw new Error(errorMessage);
       }
 
       const paymentData = await paymentResponse.json();
@@ -237,7 +239,21 @@ function CheckoutPageContent() {
       }
     } catch (error) {
       console.error('Payment error:', error);
-      alert('Failed to initiate payment. Please try again or choose Cash on Delivery.');
+      
+      // Show more specific error message
+      let errorMessage = 'Failed to initiate payment. Please try again or choose Cash on Delivery.';
+      
+      if (error instanceof Error) {
+        if (error.message.includes('Payment gateway not configured')) {
+          errorMessage = 'Online payments are temporarily unavailable. Please choose Cash on Delivery or contact support.';
+        } else if (error.message.includes('Invalid credentials')) {
+          errorMessage = 'Payment service configuration error. Please contact support or choose Cash on Delivery.';
+        } else if (error.message.includes('Failed to create payment')) {
+          errorMessage = 'Unable to process payment at this time. Please try again later or choose Cash on Delivery.';
+        }
+      }
+      
+      alert(errorMessage);
       setProcessingPayment(false);
     }
   };
@@ -683,7 +699,7 @@ function CheckoutPageContent() {
                     }`}
                     onClick={() => setPaymentMethod('online')}
                   >
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-start gap-3">
                       <input
                         type="radio"
                         id="online"
@@ -691,19 +707,51 @@ function CheckoutPageContent() {
                         value="online"
                         checked={paymentMethod === 'online'}
                         onChange={(e) => setPaymentMethod(e.target.value)}
-                        className="text-green-600"
+                        className="text-green-600 mt-1 flex-shrink-0"
                       />
-                      <label htmlFor="online" className="flex-1 cursor-pointer">
-                        <div className="font-medium">Online Payment</div>
-                        <div className="text-sm text-gray-600">Credit/Debit Card, UPI, Net Banking via Zoho</div>
-                      </label>
-                      <div className="text-right">
-                        <div className="text-xs text-green-600 font-medium">Secure & Fast</div>
-                        <div className="flex gap-1 mt-1">
-                          <span className="text-xs bg-blue-100 text-blue-800 px-1 rounded">UPI</span>
-                          <span className="text-xs bg-green-100 text-green-800 px-1 rounded">Cards</span>
-                          <span className="text-xs bg-purple-100 text-purple-800 px-1 rounded">Net Banking</span>
-                        </div>
+                      <div className="flex-1 min-w-0">
+                        <label htmlFor="online" className="cursor-pointer">
+                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                            <div className="flex-1">
+                              <div className="font-medium text-base mb-1">Online Payment</div>
+                              <div className="text-sm text-gray-600 mb-2 sm:mb-0">
+                                Credit/Debit Card, UPI, Net Banking
+                              </div>
+                            </div>
+                            
+                            {/* Zoho branding section */}
+                            <div className="flex flex-col sm:items-end gap-1">
+                              <div className="flex items-center gap-1">
+                                <span className="text-xs text-green-600 font-medium">Powered by</span>
+                                <div className="flex items-center gap-1 bg-white px-1 py-1 rounded-md shadow-sm border">
+                                  <Image 
+                                    src="/zoho.jpg" 
+                                    alt="Zoho Payments" 
+                                    width={35} 
+                                    height={35} 
+                                    className="rounded-sm object-contain"
+                                  />
+                                  <span className="text-xs text-gray-700">Zoho Payments</span>
+                                </div>
+                              </div>
+                              
+                              {/* Payment method badges */}
+                              <div className="flex flex-wrap gap-1 justify-start sm:justify-end">
+                                <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full font-medium">UPI</span>
+                                <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full font-medium">Cards</span>
+                                <span className="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded-full font-medium">Net Banking</span>
+                              </div>
+                              
+                              {/* Security badge */}
+                              <div className="flex items-center gap-1 text-xs text-green-600">
+                                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                  <path fillRule="evenodd" d="M2.166 4.999A11.954 11.954 0 0010 1.944 11.954 11.954 0 0017.834 5c.11.65.166 1.32.166 2.001 0 5.225-3.34 9.67-8 11.317C5.34 16.67 2 12.225 2 7c0-.682.057-1.35.166-2.001zm11.541 3.708a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                                </svg>
+                                <span className="font-medium">Secure & Fast</span>
+                              </div>
+                            </div>
+                          </div>
+                        </label>
                       </div>
                     </div>
                   </div>

@@ -6,11 +6,28 @@ const ZOHO_CLIENT_SECRET = process.env.ZOHO_CLIENT_SECRET
 
 export async function POST(request: NextRequest) {
   try {
+    console.log('Payment creation request received')
+    
+    // Check environment variables first
+    if (!ZOHO_CLIENT_ID || !ZOHO_CLIENT_SECRET) {
+      console.error('Missing Zoho credentials:', { 
+        hasClientId: !!ZOHO_CLIENT_ID, 
+        hasClientSecret: !!ZOHO_CLIENT_SECRET 
+      })
+      return NextResponse.json(
+        { error: 'Payment gateway not configured. Please contact support.' },
+        { status: 500 }
+      )
+    }
+
     const body = await request.json()
     const { amount, orderId, customerDetails, returnUrl } = body
 
+    console.log('Payment request data:', { amount, orderId, customerName: customerDetails?.name })
+
     // Validate required fields
     if (!amount || !orderId || !customerDetails) {
+      console.error('Missing required fields:', { amount, orderId, customerDetails })
       return NextResponse.json(
         { error: 'Missing required fields' },
         { status: 400 }
@@ -46,9 +63,17 @@ export async function POST(request: NextRequest) {
 
     if (!response.ok) {
       const errorData = await response.text()
-      console.error('Zoho API Error:', errorData)
+      console.error('Zoho API Error:', {
+        status: response.status,
+        statusText: response.statusText,
+        error: errorData,
+        requestData: paymentData
+      })
       return NextResponse.json(
-        { error: 'Payment gateway error' },
+        { 
+          error: 'Payment gateway error',
+          details: response.status === 401 ? 'Invalid credentials' : 'Service unavailable'
+        },
         { status: 500 }
       )
     }

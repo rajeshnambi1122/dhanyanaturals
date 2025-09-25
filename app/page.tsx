@@ -1,20 +1,22 @@
+"use client";
 import Link from "next/link"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Leaf, ShoppingBag, Star, Shield, Heart, Sparkles, Zap, Award } from "lucide-react"
 import { productService } from "@/lib/supabase"
+import { useState, useEffect } from "react"
 
 const categories = [
   { 
     name: "Soaps", 
     image: "https://ccklbyexywvclddrqjwr.supabase.co/storage/v1/object/public/product-images/products/1756378335713-lohlfd4ei.png", 
-    count: 15, 
+    count: 0, 
     gradient: "from-blue-400 to-blue-600" 
   },
   { 
     name: "Shampoos", 
     image: "https://ccklbyexywvclddrqjwr.supabase.co/storage/v1/object/public/product-images/products/1756347564729-vq72fshtn.png", 
-    count: 8, 
+    count: 0, 
     gradient: "from-purple-400 to-purple-600" 
   },
   { 
@@ -75,16 +77,52 @@ const features = [
   }
 ]
 
-export default async function HomePage() {
-  // Fetch featured products from Supabase
-  let featuredProducts = await productService.getFeaturedProducts(4)
-  
-  // Fallback: if no featured products, get the first 4 products
-  if (!featuredProducts || featuredProducts.length === 0) {
-    console.log('No featured products found, fetching regular products as fallback')
-    const allProducts = await productService.getProducts({ inStockOnly: true })
-    featuredProducts = allProducts.slice(0, 4)
+export default function HomePage() {
+  const [categoryCounts, setCategoryCounts] = useState<{[key: string]: number}>({})
+  const [featuredProducts, setFeaturedProducts] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        // Fetch category counts
+        const countsResponse = await fetch('/api/categories/')
+        if (countsResponse.ok) {
+          const countsData = await countsResponse.json()
+          setCategoryCounts(countsData.counts || {})
+        }
+
+        // Fetch featured products
+        const featuredProductsData = await productService.getFeaturedProducts(4)
+        setFeaturedProducts(featuredProductsData)
+      } catch (error) {
+        console.error('Error fetching data:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchData()
+  }, [])
+
+  // Map category names to database category keys
+  const getCategoryKey = (categoryName: string) => {
+    const mapping: {[key: string]: string} = {
+      "Soaps": "soaps",
+      "Shampoos": "shampoos", 
+      "Herbal Powders": "herbal-powders",
+      "Hair Care": "hair-care",
+      "Skin Care": "skin-care"
+    }
+    return mapping[categoryName] || categoryName.toLowerCase().replace(" ", "-")
   }
+
+  // Get real-time count for category or fallback to hardcoded
+  const getCategoryCount = (categoryName: string, fallbackCount: number) => {
+    const categoryKey = getCategoryKey(categoryName)
+    return categoryCounts[categoryKey] || fallbackCount
+  }
+  
 
   return (
     <div className="min-h-screen glass-background page-transition">
@@ -178,7 +216,7 @@ export default async function HomePage() {
                     />
                   </div>
                   <h3 className="font-semibold mb-1 group-hover:text-green-600 transition-colors">{category.name}</h3>
-                  <p className="text-sm text-gray-500">{category.count} products</p>
+                  <p className="text-sm text-gray-500">{getCategoryCount(category.name, category.count)} products</p>
                   <div
                     className={`h-1 w-0 group-hover:w-full bg-gradient-to-r ${category.gradient} rounded-full transition-all duration-300 mx-auto mt-2`}
                   ></div>
@@ -279,7 +317,7 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* Newsletter */}
+      {/* Newsletter 
       <section className="py-20 relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-r from-green-600 via-blue-600 to-purple-600"></div>
         <div className="absolute inset-0 bg-black/20"></div>
@@ -302,9 +340,7 @@ export default async function HomePage() {
             </div>
           </div>
         </div>
-      </section>
-
-
+      </section> */}
     </div>
   )
 }
