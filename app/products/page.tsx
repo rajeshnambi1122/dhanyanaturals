@@ -335,17 +335,17 @@ export default function ProductsPage() {
                 {products.map((product, index) => (
                   <Link href={`/products/${product.id}`} key={product.id} prefetch={true}>
                     <div 
-                      className="glass-card p-6 cursor-pointer hover:shadow-lg transition-all duration-300 hover-lift group"
+                      className="glass-card p-4 sm:p-6 cursor-pointer hover:shadow-lg transition-all duration-300 hover-lift group"
                       onMouseEnter={() => handleProductHover(product.id)}
                     >
-                      <div className="flex gap-6">
-                        <div className="relative overflow-hidden rounded-lg">
+                      <div className="flex gap-3 sm:gap-6">
+                        <div className="relative overflow-hidden rounded-lg flex-shrink-0">
                           <Image
                             src={product.image_url || "/placeholder.svg"}
                             alt={product.name}
                             width={150}
                             height={150}
-                            className="block w-32 h-32 object-cover transition-transform duration-300 group-hover:scale-105"
+                            className="block w-20 h-20 sm:w-32 sm:h-32 object-cover transition-transform duration-300 group-hover:scale-105"
                           />
                           {!product.in_stock && (
                             <div className="absolute inset-0 bg-black/50 flex items-center justify-center rounded-lg">
@@ -353,32 +353,32 @@ export default function ProductsPage() {
                             </div>
                           )}
                         </div>
-                        <div className="flex-1">
+                        <div className="flex-1 min-w-0">
                           <div className="flex justify-between items-start mb-2">
-                            <h3 className="text-xl font-semibold group-hover:text-green-600 transition-colors">
+                            <h3 className="text-base sm:text-xl font-semibold group-hover:text-green-600 transition-colors line-clamp-2 pr-2">
                               {product.name}
                             </h3>
                             {product.original_price && product.original_price > product.price && (
-                              <div className="glass-badge bg-red-500 animate-pulse">Sale</div>
+                              <div className="glass-badge bg-red-500 animate-pulse text-xs flex-shrink-0">Sale</div>
                             )}
                           </div>
-                          <p className="text-gray-600 mb-3 line-clamp-2">{product.description}</p>
-                          <div className="flex items-center mb-3">
+                          <p className="text-gray-600 mb-2 sm:mb-3 line-clamp-2 text-sm sm:text-base">{product.description}</p>
+                          <div className="flex items-center mb-2 sm:mb-3">
                             <div className="flex items-center">
-                              <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-                              <span className="text-sm ml-1 font-medium">{product.rating || 0}</span>
+                              <Star className="h-3 w-3 sm:h-4 sm:w-4 fill-yellow-400 text-yellow-400" />
+                              <span className="text-xs sm:text-sm ml-1 font-medium">{product.rating || 0}</span>
                             </div>
-                            <span className="text-sm text-gray-500 ml-2">({product.reviews_count || 0} reviews)</span>
+                            <span className="text-xs sm:text-sm text-gray-500 ml-2">({product.reviews_count || 0} reviews)</span>
                           </div>
-                          <div className="flex items-center justify-between">
+                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                             <div className="flex items-center space-x-2">
-                              <span className="text-xl font-bold text-green-600">₹{product.price}</span>
+                              <span className="text-lg sm:text-xl font-bold text-green-600">₹{product.price}</span>
                               {product.original_price && (
                                 <span className="text-sm text-gray-500 line-through">₹{product.original_price}</span>
                               )}
                             </div>
-                            <Button disabled={!product.in_stock} className="glass-button hover-lift">
-                              <ShoppingBag className="h-4 w-4 mr-2" />
+                            <Button disabled={!product.in_stock} className="glass-button hover-lift text-xs sm:text-sm px-3 py-2">
+                              <ShoppingBag className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
                               {product.in_stock ? "Add to Cart" : "Out of Stock"}
                             </Button>
                           </div>

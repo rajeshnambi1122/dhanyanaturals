@@ -1011,7 +1011,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
                         </div>
                       </div>
                       <div className="flex items-center justify-between">
-                        <span className="text-lg font-bold text-green-600">${relatedProduct.price}</span>
+                        <span className="text-lg font-bold text-green-600">₹{relatedProduct.price}</span>
                         <Button size="sm" className="glass-button">
                           View
                         </Button>
