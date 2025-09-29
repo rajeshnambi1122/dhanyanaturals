@@ -545,14 +545,20 @@ function CheckoutPageContent() {
                 </div>
                 <div>
                   <Label htmlFor="email">Email Address *</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    value={customerDetails.email}
-                    onChange={(e) => setCustomerDetails(prev => ({ ...prev, email: e.target.value }))}
-                    className="glass-input"
-                    placeholder="your.email@example.com"
-                  />
+                  <div className="relative">
+                    <Input
+                      id="email"
+                      type="email"
+                      value={customerDetails.email}
+                      readOnly
+                      className="glass-input bg-gray-50 cursor-not-allowed text-gray-700"
+                      placeholder="your.email@example.com"
+                    />
+                    <div className="absolute right-3 top-1/2 transform -translate-y-1/2 flex items-center gap-1">
+                      <CheckCircle className="h-4 w-4 text-green-600" />
+                      <span className="text-xs text-green-600 font-medium">From Account</span>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>

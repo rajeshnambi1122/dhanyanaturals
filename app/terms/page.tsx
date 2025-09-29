@@ -1,4 +1,3 @@
-"use client";
 import { FileText, Shield, Users, AlertTriangle, Mail, Phone } from "lucide-react";
 
 export default function TermsPage() {

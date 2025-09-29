@@ -1,5 +1,3 @@
-"use client";
-
 import Image from "next/image";
 import { Leaf, Heart, Users, Award, CheckCircle, Sparkles } from "lucide-react";
 

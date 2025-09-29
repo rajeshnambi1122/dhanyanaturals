@@ -1,4 +1,3 @@
-"use client";
 import { XCircle, AlertTriangle, Mail, Phone, ShoppingBag, Clock } from "lucide-react";
 
 export default function RefundPage() {
