@@ -1,10 +1,11 @@
-"use client";
 import Link from "next/link"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Leaf, ShoppingBag, Star, Shield, Heart, Sparkles, Zap, Award } from "lucide-react"
-import { productService } from "@/lib/supabase"
-import { useState, useEffect } from "react"
+import { productService, supabase } from "@/lib/supabase"
+
+// Revalidate the page 
+export const revalidate = 3000
 
 const categories = [
   { 
@@ -38,6 +39,47 @@ const categories = [
     gradient: "from-yellow-400 to-yellow-600" 
   },
 ]
+
+// Server-side data fetching functions
+async function getCategoryCounts() {
+  try {
+    const { data: products, error } = await supabase
+      .from('products')
+      .select('category')
+      .eq('status', 'active')
+      .eq('in_stock', true)
+
+    if (error) {
+      console.error('Category counts fetch error:', error)
+      return {}
+    }
+
+    // Count products per category
+    const categoryCounts = products?.reduce((acc: any, product: any) => {
+      const category = product.category
+      if (acc[category]) {
+        acc[category]++
+      } else {
+        acc[category] = 1
+      }
+      return acc
+    }, {}) || {}
+
+    return categoryCounts
+  } catch (error) {
+    console.error('Error fetching category counts:', error)
+    return {}
+  }
+}
+
+async function getFeaturedProducts() {
+  try {
+    return await productService.getFeaturedProducts(4)
+  } catch (error) {
+    console.error('Error fetching featured products:', error)
+    return []
+  }
+}
 
 const features = [
   {
@@ -77,33 +119,12 @@ const features = [
   }
 ]
 
-export default function HomePage() {
-  const [categoryCounts, setCategoryCounts] = useState<{[key: string]: number}>({})
-  const [featuredProducts, setFeaturedProducts] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        // Fetch category counts
-        const countsResponse = await fetch('/api/categories/')
-        if (countsResponse.ok) {
-          const countsData = await countsResponse.json()
-          setCategoryCounts(countsData.counts || {})
-        }
-
-        // Fetch featured products
-        const featuredProductsData = await productService.getFeaturedProducts(4)
-        setFeaturedProducts(featuredProductsData)
-      } catch (error) {
-        console.error('Error fetching data:', error)
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    fetchData()
-  }, [])
+export default async function HomePage() {
+  // Fetch data server-side
+  const [categoryCounts, featuredProducts] = await Promise.all([
+    getCategoryCounts(),
+    getFeaturedProducts()
+  ])
 
   // Map category names to database category keys
   const getCategoryKey = (categoryName: string) => {

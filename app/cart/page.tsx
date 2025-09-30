@@ -120,21 +120,19 @@ export default function CartPage() {
 
   // Re-sync cart items when user cart data changes (after refreshUser calls)
   useEffect(() => {
-    if (hasInitialized && user) {
+    if (hasInitialized && user && !updating) { // Don't sync during updates to prevent conflicts
       const userCartItems = user.cart_items || [];
       const currentProductIds = cartItems.map(item => item.product_id);
       const userCartProductIds = userCartItems.map((item: CartItem) => item.product_id);
       
-      // Check if the cart has changed
-      const hasChanged = currentProductIds.length !== userCartProductIds.length ||
-        currentProductIds.some(id => !userCartProductIds.includes(id)) ||
-        userCartItems.some((item: CartItem) => {
-          const currentItem = cartItems.find(cartItem => cartItem.product_id === item.product_id);
-          return !currentItem || currentItem.quantity !== item.quantity;
-        });
+      // Check if the cart has changed significantly (new/removed items, not just quantity changes during updates)
+      const hasNewOrRemovedItems = currentProductIds.length !== userCartProductIds.length ||
+        currentProductIds.some((id: number) => !userCartProductIds.includes(id)) ||
+        userCartProductIds.some((id: number) => !currentProductIds.includes(id));
       
-      if (hasChanged) {
-        console.log("Cart data changed, updating cart page...");
+      // Only sync for significant changes, not minor quantity updates
+      if (hasNewOrRemovedItems) {
+        console.log("Cart structure changed, updating cart page...");
         // Re-fetch cart with updated data
         const fetchUpdatedCart = async () => {
           try {
@@ -147,20 +145,24 @@ export default function CartPage() {
             const productIds = userCartItems.map((item: CartItem) => item.product_id);
             const uniqueProductIds: number[] = Array.from(new Set(productIds));
             
-            // Batch fetch all products
-            const products = await productService.getProductsByIds(uniqueProductIds);
+            // Check if we already have all products in our cache
+            const missingProductIds = uniqueProductIds.filter((id: number) => !productMap.current[id]);
             
-            // Create product lookup map
-            const productMap = products.reduce((acc, product) => {
-              if (product) {
-                acc[product.id] = product;
-              }
-              return acc;
-            }, {} as Record<number, any>);
+            if (missingProductIds.length > 0) {
+              // Only fetch missing products
+              const products = await productService.getProductsByIds(missingProductIds);
+              
+              // Update product cache
+              products.forEach(product => {
+                if (product) {
+                  productMap.current[product.id] = product;
+                }
+              });
+            }
             
-            // Map cart items with product details
+            // Map cart items with product details using cached data
             const cartWithDetails = userCartItems.map((item: CartItem) => {
-              const product = productMap[item.product_id];
+              const product = productMap.current[item.product_id];
               return {
                 ...item,
                 product_name: product?.name || 'Unknown Product',
@@ -180,7 +182,7 @@ export default function CartPage() {
         fetchUpdatedCart();
       }
     }
-  }, [user?.cart_items, hasInitialized, cartItems]);
+  }, [user?.cart_items, hasInitialized, updating]);
 
   const [promoCode, setPromoCode] = useState("")
 
@@ -202,18 +204,36 @@ export default function CartPage() {
           return;
         }
 
-        const userId = user.user_id || user.id;
-        await userDataService.updateCartQuantity(userId, productId, newQuantity);
+        // Update local state immediately for better UX
         setCartItems(prev => prev.map((item) => 
           item.product_id === productId ? { ...item, quantity: newQuantity } : item
         ));
+
+        const userId = user.user_id || user.id;
+        await userDataService.updateCartQuantity(userId, productId, newQuantity);
       }
       
-      // Refresh the auth context to sync global cart state
-      await refreshUser();
+      // No refresh needed - optimistic updates provide immediate feedback
     } catch (error) {
       console.error('Error updating quantity:', error);
       alert('Failed to update quantity');
+      
+      // Revert local state on error
+      const userData = await userDataService.getUserData(user.user_id || user.id);
+      if (userData?.cart_items) {
+        const cartWithDetails = userData.cart_items.map((item: CartItem) => {
+          const product = productMap.current[item.product_id];
+          return {
+            ...item,
+            product_name: product?.name || 'Unknown Product',
+            price: product?.price || 0,
+            image: product?.image_url || product?.image,
+            stock_quantity: product?.stock_quantity || 0,
+            in_stock: product?.in_stock || false,
+          };
+        });
+        setCartItems(cartWithDetails);
+      }
     } finally {
       setUpdating(null);
     }
@@ -224,15 +244,33 @@ export default function CartPage() {
     
     setUpdating(productId);
     try {
-      const userId = user.user_id || user.id;
-      await userDataService.removeFromCart(userId, productId);
+      // Update local state immediately for better UX
       setCartItems(prev => prev.filter((item) => item.product_id !== productId));
       
-      // Refresh the auth context to sync global cart state
-      await refreshUser();
+      const userId = user.user_id || user.id;
+      await userDataService.removeFromCart(userId, productId);
+      
+      // No need to refresh user - CartContext will handle the sync automatically
     } catch (error) {
       console.error('Error removing item:', error);
       alert('Failed to remove item');
+      
+      // Revert local state on error
+      const userData = await userDataService.getUserData(user.user_id || user.id);
+      if (userData?.cart_items) {
+        const cartWithDetails = userData.cart_items.map((item: CartItem) => {
+          const product = productMap.current[item.product_id];
+          return {
+            ...item,
+            product_name: product?.name || 'Unknown Product',
+            price: product?.price || 0,
+            image: product?.image_url || product?.image,
+            stock_quantity: product?.stock_quantity || 0,
+            in_stock: product?.in_stock || false,
+          };
+        });
+        setCartItems(cartWithDetails);
+      }
     } finally {
       setUpdating(null);
     }
@@ -243,15 +281,33 @@ export default function CartPage() {
     
     setLoading(true);
     try {
-      const userId = user.user_id || user.id;
-      await userDataService.clearCart(userId);
+      // Update local state immediately for better UX
       setCartItems([]);
       
-      // Refresh the auth context to sync global cart state
-      await refreshUser();
+      const userId = user.user_id || user.id;
+      await userDataService.clearCart(userId);
+      
+      // No need to refresh user - CartContext will handle the sync automatically
     } catch (error) {
       console.error('Error clearing cart:', error);
       alert('Failed to clear cart');
+      
+      // Revert local state on error
+      const userData = await userDataService.getUserData(user.user_id || user.id);
+      if (userData?.cart_items) {
+        const cartWithDetails = userData.cart_items.map((item: CartItem) => {
+          const product = productMap.current[item.product_id];
+          return {
+            ...item,
+            product_name: product?.name || 'Unknown Product',
+            price: product?.price || 0,
+            image: product?.image_url || product?.image,
+            stock_quantity: product?.stock_quantity || 0,
+            in_stock: product?.in_stock || false,
+          };
+        });
+        setCartItems(cartWithDetails);
+      }
     } finally {
       setLoading(false);
     }
@@ -451,7 +507,7 @@ export default function CartPage() {
                   </div>
 
                   {subtotal < 999 && (
-                    <div className="mb-4 glass-badge bg-blue-500 p-3 rounded-lg text-xs sm:text-sm text-white">
+                    <div className="mb-12 mt-12 glass-badge bg-blue-500 p-3 rounded-lg text-xs sm:text-sm text-white">
                       <span className="block sm:inline">Add ₹{(999 - subtotal).toFixed(2)} more</span>
                       <span className="block sm:inline"> for free shipping!</span>
                     </div>

@@ -49,15 +49,27 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       // Update cart in database
       await userDataService.addToCart(user.id, productId, quantity);
       
-      // Get updated user data (includes cart_items)
-      const userData = await userDataService.getUserData(user.id);
-      if (userData?.cart_items) {
-        setCartItems(userData.cart_items);
-        // Only refresh AuthContext if needed
-        await refreshUser();
+      // Update local state optimistically
+      const existingItem = cartItems.find(item => item.product_id === productId);
+      if (existingItem) {
+        setCartItems(prev => prev.map(item => 
+          item.product_id === productId 
+            ? { ...item, quantity: item.quantity + quantity }
+            : item
+        ));
+      } else {
+        setCartItems(prev => [...prev, {
+          product_id: productId,
+          quantity,
+          added_at: new Date().toISOString()
+        }]);
       }
+      
+      // Let AuthContext sync happen naturally via useEffect
     } catch (error) {
       console.error('Error adding to cart:', error);
+      // Revert optimistic update on error
+      await refreshCart();
       throw error;
     } finally {
       setIsLoading(false);
@@ -71,11 +83,15 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       if (!user) return;
 
       await userDataService.removeFromCart(user.id, productId);
-      await refreshCart();
-      // Refresh AuthContext user data to sync with cart page
-      await refreshUser();
+      
+      // Update local state optimistically
+      setCartItems(prev => prev.filter(item => item.product_id !== productId));
+      
+      // Let AuthContext sync happen naturally via useEffect
     } catch (error) {
       console.error('Error removing from cart:', error);
+      // Revert optimistic update on error
+      await refreshCart();
       throw error;
     } finally {
       setIsLoading(false);
@@ -89,11 +105,17 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       if (!user) return;
 
       await userDataService.updateCartQuantity(user.id, productId, quantity);
-      await refreshCart();
-      // Refresh AuthContext user data to sync with cart page
-      await refreshUser();
+      
+      // Update local state optimistically
+      setCartItems(prev => prev.map(item => 
+        item.product_id === productId ? { ...item, quantity } : item
+      ));
+      
+      // Let AuthContext sync happen naturally via useEffect
     } catch (error) {
       console.error('Error updating quantity:', error);
+      // Revert optimistic update on error
+      await refreshCart();
       throw error;
     } finally {
       setIsLoading(false);
@@ -107,11 +129,15 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       if (!user) return;
 
       await userDataService.clearCart(user.id);
+      
+      // Update local state optimistically
       setCartItems([]);
-      // Refresh AuthContext user data to sync with cart page
-      await refreshUser();
+      
+      // Let AuthContext sync happen naturally via useEffect
     } catch (error) {
       console.error('Error clearing cart:', error);
+      // Revert optimistic update on error
+      await refreshCart();
       throw error;
     } finally {
       setIsLoading(false);
