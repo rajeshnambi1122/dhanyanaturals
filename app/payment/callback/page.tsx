@@ -1,9 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
-export default function PaymentCallback() {
+// Ensure this page is treated as dynamic to avoid prerendering
+export const dynamic = 'force-dynamic';
+
+function PaymentCallbackInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
@@ -101,5 +104,21 @@ export default function PaymentCallback() {
         <p className="text-gray-600">{message}</p>
       </div>
     </div>
+  );
+}
+
+export default function PaymentCallback() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center glass-background">
+        <div className="glass-card p-8 text-center max-w-md">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto mb-4"></div>
+          <h2 className="text-xl font-semibold mb-2">Loading...</h2>
+          <p className="text-gray-600">Preparing payment details...</p>
+        </div>
+      </div>
+    }>
+      <PaymentCallbackInner />
+    </Suspense>
   );
 }
