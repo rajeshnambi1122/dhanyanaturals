@@ -467,7 +467,7 @@ export default function AdminDashboard() {
   }
 
   return (
-    <div className="glass-background pb-8">
+    <div className="glass-background pb-20">
       <div className="container mx-auto px-4 py-8">
         <div className="mb-8">
           <h2 className="text-2xl md:text-3xl font-bold mb-2">Dashboard</h2>
@@ -514,11 +514,13 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        <Tabs defaultValue="products" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-2 max-w-sm mx-auto md:mx-0">
-            <TabsTrigger value="products">Products</TabsTrigger>
-            <TabsTrigger value="orders">Orders</TabsTrigger>
-          </TabsList>
+        <Tabs defaultValue="products" className="space-y-4">
+          <div className="sticky bottom-0 z-50 bg-white/10 backdrop-blur-sm p-2 rounded-lg mx-auto max-w-sm">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="products">Products</TabsTrigger>
+              <TabsTrigger value="orders">Orders</TabsTrigger>
+            </TabsList>
+          </div>
 
           <TabsContent value="products">
             <div className="glass-card">
@@ -1011,17 +1013,17 @@ export default function AdminDashboard() {
                     <p className="text-gray-600">Orders will appear here once customers start placing them.</p>
                   </div>
                 ) : (
-                  <div className="grid gap-4 sm:gap-6">
+                  <div className="grid gap-2 sm:gap-3">
                     {orders.map((order) => (
-                      <div key={order.id} className="glass-card p-4 sm:p-6 hover-lift border border-white/20">
-                        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
+                      <div key={order.id} className="glass-card p-2 sm:p-3 hover-lift border border-white/20">
+                        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 mb-3">
                           <div className="flex-1">
-                            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 mb-4">
-                              <h3 className="font-bold text-lg flex items-center gap-2">
-                                <ShoppingCart className="h-5 w-5 text-green-600" />
+                            <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 mb-2">
+                              <h3 className="font-bold text-sm flex items-center gap-1">
+                                <ShoppingCart className="h-3 w-3 text-green-600" />
                                 Order #{order.id}
                               </h3>
-                              <div className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
+                              <div className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
                                 order.status === "delivered" ? "bg-green-100 text-green-800" : 
                                 order.status === "shipped" ? "bg-blue-100 text-blue-800" : 
                                 order.status === "processing" ? "bg-yellow-100 text-yellow-800" : 
@@ -1033,28 +1035,28 @@ export default function AdminDashboard() {
                             
                             {/* Customer Information */}
                             {(order.customer_name || order.customer_email || order.customer_phone) && (
-                              <div className="mb-4 p-3 bg-gray-50 rounded-lg">
-                                <h4 className="font-semibold text-gray-800 mb-2 flex items-center gap-2">
-                                  <UserCircle className="h-4 w-4" />
+                              <div className="mb-2 p-1 bg-gray-50 rounded-lg">
+                                <h4 className="font-semibold text-gray-800 mb-1 flex items-center gap-1 text-xs">
+                                  <UserCircle className="h-3 w-3" />
                                   Customer Details
                                 </h4>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 text-sm">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1 text-xs">
                                   {order.customer_name && (
-                                    <div className="flex items-center gap-2 text-gray-600">
+                                    <div className="flex items-center gap-1 text-gray-600">
                                       <UserCircle className="h-3 w-3" />
-                                      <span>{order.customer_name}</span>
+                                      <span className="truncate">{order.customer_name}</span>
                                     </div>
                                   )}
                                   {order.customer_email && (
-                                    <div className="flex items-center gap-2 text-gray-600">
+                                    <div className="flex items-center gap-1 text-gray-600">
                                       <Mail className="h-3 w-3" />
-                                      <span>{order.customer_email}</span>
+                                      <span className="truncate">{order.customer_email}</span>
                                     </div>
                                   )}
                                   {order.customer_phone && (
-                                    <div className="flex items-center gap-2 text-gray-600">
+                                    <div className="flex items-center gap-1 text-gray-600">
                                       <Phone className="h-3 w-3" />
-                                      <span>{order.customer_phone}</span>
+                                      <span className="truncate">{order.customer_phone}</span>
                                     </div>
                                   )}
                                 </div>
@@ -1062,22 +1064,22 @@ export default function AdminDashboard() {
                             )}
 
                             {/* Order Summary */}
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4 text-sm text-gray-600 mb-4">
-                              <div className="flex items-center gap-2">
-                                <Calendar className="h-4 w-4" />
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 text-xs text-gray-600 mb-2">
+                              <div className="flex items-center gap-1">
+                                <Calendar className="h-3 w-3" />
                                 <span>{new Date(order.created_at || "").toLocaleDateString()}</span>
                               </div>
-                              <div className="flex items-center gap-2">
-                                <Package className="h-4 w-4" />
+                              <div className="flex items-center gap-1">
+                                <Package className="h-3 w-3" />
                                 <span>{order.items?.length || 0} item{(order.items?.length || 0) !== 1 ? 's' : ''}</span>
                               </div>
-                              <div className="flex items-center gap-2">
-                                <DollarSign className="h-4 w-4" />
+                              <div className="flex items-center gap-1">
+                                <DollarSign className="h-3 w-3" />
                                 <span className="font-semibold text-green-600">₹{parseFloat(String(order.total_amount || 0)).toFixed(2)}</span>
                               </div>
                               {order.updated_at && order.updated_at !== order.created_at && (
-                                <div className="flex items-center gap-2">
-                                  <Clock className="h-4 w-4" />
+                                <div className="flex items-center gap-1">
+                                  <Clock className="h-3 w-3" />
                                   <span title="Last Updated">Updated: {new Date(order.updated_at).toLocaleDateString()}</span>
                                 </div>
                               )}
@@ -1085,23 +1087,23 @@ export default function AdminDashboard() {
 
                             {/* Shipping Address */}
                             {order.shipping_address && (
-                              <div className="mb-4 p-3 bg-blue-50 rounded-lg">
-                                <h4 className="font-semibold text-gray-800 mb-2 flex items-center gap-2">
-                                  <MapPin className="h-4 w-4" />
+                              <div className="mb-2 p-1 bg-blue-50 rounded-lg">
+                                <h4 className="font-semibold text-gray-800 mb-1 flex items-center gap-1 text-xs">
+                                  <MapPin className="h-3 w-3" />
                                   Shipping Address
                                 </h4>
-                                <div className="text-sm text-gray-600">
+                                <div className="text-xs text-gray-600">
                                   {typeof order.shipping_address === 'string' ? (
-                                    <div>{order.shipping_address}</div>
+                                    <div className="truncate">{order.shipping_address}</div>
                                   ) : (
                                     <div>
-                                      {order.shipping_address.street && <div>{order.shipping_address.street}</div>}
-                                      <div>
+                                      {order.shipping_address.street && <div className="truncate">{order.shipping_address.street}</div>}
+                                      <div className="truncate">
                                         {[order.shipping_address.city, order.shipping_address.state, order.shipping_address.zipCode]
                                           .filter(Boolean)
                                           .join(', ')}
                                       </div>
-                                      {order.shipping_address.country && <div>{order.shipping_address.country}</div>}
+                                      {order.shipping_address.country && <div className="truncate">{order.shipping_address.country}</div>}
                                     </div>
                                   )}
                                 </div>
@@ -1109,36 +1111,36 @@ export default function AdminDashboard() {
                             )}
 
                             {/* Payment & Tracking */}
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 mb-2">
                               {order.payment_method && (
-                                <div className="p-3 bg-green-50 rounded-lg">
-                                  <h4 className="font-semibold text-gray-800 mb-2 flex items-center gap-2">
-                                    <CreditCard className="h-4 w-4" />
+                                <div className="p-1 bg-green-50 rounded-lg">
+                                  <h4 className="font-semibold text-gray-800 mb-1 flex items-center gap-1 text-xs">
+                                    <CreditCard className="h-3 w-3" />
                                     Payment Method
                                   </h4>
-                                  <div className="text-sm text-gray-600">{order.payment_method}</div>
+                                  <div className="text-xs text-gray-600 truncate">{order.payment_method}</div>
                                 </div>
                               )}
                               
                               {order.tracking_number && (
-                                <div className="p-3 bg-purple-50 rounded-lg">
-                                  <h4 className="font-semibold text-gray-800 mb-2 flex items-center gap-2">
-                                    <Truck className="h-4 w-4" />
+                                <div className="p-1 bg-purple-50 rounded-lg">
+                                  <h4 className="font-semibold text-gray-800 mb-1 flex items-center gap-1 text-xs">
+                                    <Truck className="h-3 w-3" />
                                     Tracking Number
                                   </h4>
-                                  <div className="text-sm text-gray-600 font-mono">{order.tracking_number}</div>
+                                  <div className="text-xs text-gray-600 font-mono truncate">{order.tracking_number}</div>
                                 </div>
                               )}
                             </div>
 
                             {/* Notes */}
                             {order.notes && (
-                              <div className="mb-4 p-3 bg-yellow-50 rounded-lg">
-                                <h4 className="font-semibold text-gray-800 mb-2 flex items-center gap-2">
-                                  <FileText className="h-4 w-4" />
+                              <div className="mb-2 p-1 bg-yellow-50 rounded-lg">
+                                <h4 className="font-semibold text-gray-800 mb-1 flex items-center gap-1 text-xs">
+                                  <FileText className="h-3 w-3" />
                                   Admin Notes
                                 </h4>
-                                <div className="text-sm text-gray-600">{order.notes}</div>
+                                <div className="text-xs text-gray-600 line-clamp-1">{order.notes}</div>
                               </div>
                             )}
                           </div>
@@ -1146,17 +1148,17 @@ export default function AdminDashboard() {
                         
                         {/* Order Items */}
                         {order.items && order.items.length > 0 && (
-                          <div className="border-t border-gray-200 pt-4">
-                            <h4 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
-                              <Package className="h-4 w-4" />
+                          <div className="border-t border-gray-200 pt-2">
+                            <h4 className="font-semibold text-gray-800 mb-1 flex items-center gap-1 text-xs">
+                              <Package className="h-3 w-3" />
                               Items Ordered:
                             </h4>
-                            <div className="space-y-3">
+                            <div className="space-y-1">
                               {order.items.map((item: any, index: number) => (
-                                <div key={`${item.product_id}-${index}`} className="flex justify-between items-center text-sm p-2 bg-gray-50 rounded">
+                                <div key={`${item.product_id}-${index}`} className="flex justify-between items-center text-xs p-2 bg-gray-50 rounded">
                                   <div className="flex-1">
-                                    <span className="text-gray-700 font-medium">{item.product_name}</span>
-                                    <span className="text-gray-500 ml-2">× {item.quantity}</span>
+                                    <span className="text-gray-700 font-medium truncate">{item.product_name}</span>
+                                    <span className="text-gray-500 ml-1">× {item.quantity}</span>
                                     <div className="text-xs text-gray-500">₹{parseFloat(item.price || 0).toFixed(2)} each</div>
                                   </div>
                                   <span className="font-medium text-gray-800">
@@ -1164,8 +1166,8 @@ export default function AdminDashboard() {
                                   </span>
                                 </div>
                               ))}
-                              <div className="border-t border-gray-300 pt-2 mt-2">
-                                <div className="flex justify-between items-center font-semibold">
+                              <div className="border-t border-gray-300 pt-1">
+                                <div className="flex justify-between items-center font-semibold text-xs">
                                   <span>Total Amount:</span>
                                   <span className="text-green-600">₹{parseFloat(String(order.total_amount || 0)).toFixed(2)}</span>
                                 </div>
@@ -1175,12 +1177,12 @@ export default function AdminDashboard() {
                         )}
 
                         {/* Admin Actions */}
-                        <div className="border-t border-gray-200 pt-4 mt-4">
-                          <div className="flex flex-wrap gap-2">
+                        <div className="border-t border-gray-200 pt-1 mt-1">
+                          <div className="flex flex-wrap gap-1">
                             <Button 
                               variant="outline" 
                               size="sm" 
-                              className="glass-input bg-transparent"
+                              className="glass-input bg-transparent text-xs px-1 py-1"
                               onClick={() => {
                                 setEditingOrder(order)
                                 setIsEditStatusOpen(true)
@@ -1189,7 +1191,7 @@ export default function AdminDashboard() {
                               <Edit className="h-3 w-3 mr-1" />
                               Edit Status
                             </Button>
-                            <Button variant="outline" size="sm" className="glass-input bg-transparent text-red-600 hover:text-red-700">
+                            <Button variant="outline" size="sm" className="glass-input bg-transparent text-red-600 hover:text-red-700 text-xs px-1 py-1">
                               <Trash2 className="h-3 w-3 mr-1" />
                               Delete
                             </Button>

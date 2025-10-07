@@ -66,11 +66,6 @@ export default function Header() {
                     </div>
                   </div>
                 )}
-                <Link href="/">
-                  <Button variant="outline" size="sm" className="hidden sm:inline-flex">
-                    View Store
-                  </Button>
-                </Link>
                 <Button 
                   variant="outline" 
                   size="sm" 

@@ -5,7 +5,7 @@ import { Leaf, ShoppingBag, Star, Shield, Heart, Sparkles, Zap, Award } from "lu
 import { productService, supabase } from "@/lib/supabase"
 
 // Revalidate the page 
-export const revalidate = 3000
+export const revalidate = 30000
 
 const categories = [
   { 
@@ -174,7 +174,7 @@ export default async function HomePage() {
               {/* Hero Image */}
               <div className="relative order-1 lg:order-2">
                 <Image
-                  src="https://ccklbyexywvclddrqjwr.supabase.co/storage/v1/object/public/product-images/hero.jpg"
+                  src="https://ccklbyexywvclddrqjwr.supabase.co/storage/v1/object/public/product-images/newhero.jpg"
                   alt="Dhanya Naturals Organic Products"
                   width={600}
                   height={400}

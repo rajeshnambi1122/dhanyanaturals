@@ -215,7 +215,7 @@ function CheckoutPageContent() {
           amount: total,
           orderId: `ORDER_${Date.now()}`, // Temporary order ID
           customerDetails: customerDetails,
-          returnUrl: `${window.location.origin}/payment/success`
+          returnUrl: `${window.location.origin}/payment/callback`
         })
       });
 

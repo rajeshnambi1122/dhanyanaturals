@@ -1,18 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-const ZOHO_API_BASE = 'https://payment.zoho.in/api/v1'
-const ZOHO_CLIENT_ID = process.env.ZOHO_CLIENT_ID
-const ZOHO_CLIENT_SECRET = process.env.ZOHO_CLIENT_SECRET
+const ZOHO_API_BASE = 'https://payments.zoho.in/api/v1'
+const ZOHO_ACCESS_TOKEN = process.env.ZOHO_ACCESS_TOKEN
+const ZOHO_ACCOUNT_ID = process.env.ZOHO_ACCOUNT_ID
 
 export async function POST(request: NextRequest) {
   try {
     console.log('Payment creation request received')
     
     // Check environment variables first
-    if (!ZOHO_CLIENT_ID || !ZOHO_CLIENT_SECRET) {
+    if (!ZOHO_ACCESS_TOKEN || !ZOHO_ACCOUNT_ID) {
       console.error('Missing Zoho credentials:', { 
-        hasClientId: !!ZOHO_CLIENT_ID, 
-        hasClientSecret: !!ZOHO_CLIENT_SECRET 
+        hasAccessToken: !!ZOHO_ACCESS_TOKEN,
+        hasAccountId: !!ZOHO_ACCOUNT_ID
       })
       return NextResponse.json(
         { error: 'Payment gateway not configured. Please contact support.' },
@@ -34,29 +34,30 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Create payment with Zoho
-    const paymentData = {
-      amount: Math.round(amount * 100), // Convert to paise
+    // Create payment link with Zoho
+    const paymentData: any = {
+      amount: amount, // Amount in rupees (not paise)
       currency: 'INR',
-      order_id: orderId,
-      customer: {
-        name: customerDetails.name,
-        email: customerDetails.email,
-        phone: customerDetails.phone,
-      },
+      email: customerDetails.email,
+      phone: customerDetails.phone,
+      reference_id: orderId,
       description: `Order payment for Dhanya Naturals - Order #${orderId}`,
-      return_url: returnUrl || `${process.env.NEXT_PUBLIC_APP_URL}/payment/success`,
-      cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/payment/cancel`,
-      webhook_url: `${process.env.NEXT_PUBLIC_APP_URL}/api/payments/webhook`,
-      payment_methods: ['card', 'upi', 'netbanking', 'wallet'],
+      notify_user: true,
+    }
+    
+    // Only add return_url if it's provided and valid
+    if (returnUrl) {
+      paymentData.return_url = returnUrl
+    } else if (process.env.NEXT_PUBLIC_APP_URL) {
+      paymentData.return_url = `${process.env.NEXT_PUBLIC_APP_URL}/payment/callback`
     }
 
     // Make API call to Zoho Payments
-    const response = await fetch(`${ZOHO_API_BASE}/payments`, {
+    const response = await fetch(`${ZOHO_API_BASE}/paymentlinks?account_id=${ZOHO_ACCOUNT_ID}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Basic ${Buffer.from(`${ZOHO_CLIENT_ID}:${ZOHO_CLIENT_SECRET}`).toString('base64')}`,
+        'Authorization': `Bearer ${ZOHO_ACCESS_TOKEN}`,
       },
       body: JSON.stringify(paymentData),
     })
@@ -80,12 +81,20 @@ export async function POST(request: NextRequest) {
 
     const paymentResponse = await response.json()
 
-    return NextResponse.json({
-      success: true,
-      payment_id: paymentResponse.payment_id,
-      payment_url: paymentResponse.payment_url,
-      order_id: orderId,
-    })
+    if (paymentResponse.code === 0 && paymentResponse.payment_links) {
+      return NextResponse.json({
+        success: true,
+        payment_id: paymentResponse.payment_links.payment_link_id,
+        payment_url: paymentResponse.payment_links.url,
+        order_id: orderId,
+      })
+    } else {
+      console.error('Zoho Payment Link creation failed:', paymentResponse)
+      return NextResponse.json(
+        { error: 'Failed to create payment link' },
+        { status: 500 }
+      )
+    }
 
   } catch (error) {
     console.error('Payment creation error:', error)
