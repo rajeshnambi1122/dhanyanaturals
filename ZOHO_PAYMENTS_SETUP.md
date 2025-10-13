@@ -12,6 +12,10 @@ ZOHO_ACCOUNT_ID=your_account_id_here
 ZOHO_CLIENT_ID=your_client_id_here
 ZOHO_CLIENT_SECRET=your_client_secret_here
 
+# Production Tokens (Get these from your OAuth flow)
+ZOHO_ACCESS_TOKEN=1005.your_access_token_here
+ZOHO_REFRESH_TOKEN=1000.your_refresh_token_here
+
 # Widget Configuration (for client-side widget)
 NEXT_PUBLIC_ZOHO_ACCOUNT_ID=your_account_id_here
 NEXT_PUBLIC_ZOHO_API_KEY=your_api_key_here
@@ -43,6 +47,22 @@ If using OAuth2, ensure these scopes:
 - `ZohoPay.payments.CREATE` - Create payment links
 - `ZohoPay.payments.READ` - Read payment details
 - `ZohoPay.payments.UPDATE` - Update payment links
+
+### 4. Get Production Tokens
+To get tokens for production:
+
+1. **Run OAuth flow locally** (on your development machine)
+2. **Open DevTools** → Application → Cookies → localhost:3000
+3. **Find these cookies**:
+   - `zoho_access_token` - Copy the value
+   - `zoho_refresh_token` - Copy the value
+4. **Add to production environment**:
+   ```env
+   ZOHO_ACCESS_TOKEN=1005.your_actual_access_token_here
+   ZOHO_REFRESH_TOKEN=1000.your_actual_refresh_token_here
+   ```
+
+**Note**: Access tokens expire in 1 hour, but refresh tokens can generate new access tokens automatically.
 
 ## How It Actually Works
 

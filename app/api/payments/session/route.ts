@@ -15,8 +15,15 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Get access token from OAuth
-    const accessToken = await getAccessToken();
+    // Try to get access token from cookies first, then fallback to environment variable
+    let accessToken = await getAccessToken();
+    
+    if (!accessToken) {
+      // Fallback to environment variable for production
+      accessToken = process.env.ZOHO_ACCESS_TOKEN;
+      console.log('Using environment variable access token');
+    }
+    
     if (!accessToken) {
       return NextResponse.json(
         { 

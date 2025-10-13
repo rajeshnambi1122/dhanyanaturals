@@ -30,9 +30,10 @@ export function getZohoAuthUrl(): string {
 }
 
 /**
- * Get access token from cookies
+ * Get access token from cookies or environment variable
  */
 export async function getAccessToken(): Promise<string | null> {
+  // First try to get from cookies (for development)
   const cookieStore = await cookies();
   const accessToken = cookieStore.get('zoho_access_token');
   
@@ -40,10 +41,24 @@ export async function getAccessToken(): Promise<string | null> {
     return accessToken.value;
   }
   
+  // Fallback to environment variable (for production)
+  if (process.env.ZOHO_ACCESS_TOKEN) {
+    return process.env.ZOHO_ACCESS_TOKEN;
+  }
+  
   // Try to refresh token if we have a refresh token
   const refreshToken = cookieStore.get('zoho_refresh_token');
   if (refreshToken) {
     const newTokens = await refreshAccessToken(refreshToken.value);
+    if (newTokens) {
+      return newTokens.access_token;
+    }
+  }
+  
+  // Try environment variable refresh token for production
+  if (process.env.ZOHO_REFRESH_TOKEN) {
+    console.log('Using environment variable refresh token');
+    const newTokens = await refreshAccessToken(process.env.ZOHO_REFRESH_TOKEN);
     if (newTokens) {
       return newTokens.access_token;
     }
@@ -62,7 +77,10 @@ export async function refreshAccessToken(refreshToken: string): Promise<ZohoToke
       client_id: process.env.ZOHO_CLIENT_ID!,
       client_secret: process.env.ZOHO_CLIENT_SECRET!,
       refresh_token: refreshToken,
+      redirect_uri: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/auth/zoho/callback`
     });
+    
+    console.log('Refreshing access token...');
     
     const response = await fetch(ZOHO_TOKEN_URL, {
       method: 'POST',
@@ -78,6 +96,7 @@ export async function refreshAccessToken(refreshToken: string): Promise<ZohoToke
     }
     
     const tokens = await response.json();
+    console.log('Token refresh successful');
     
     // Update cookies with new tokens
     const cookieStore = await cookies();
@@ -87,6 +106,16 @@ export async function refreshAccessToken(refreshToken: string): Promise<ZohoToke
       sameSite: 'lax',
       maxAge: tokens.expires_in || 3600,
     });
+    
+    // Update refresh token if provided
+    if (tokens.refresh_token) {
+      cookieStore.set('zoho_refresh_token', tokens.refresh_token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 30 * 24 * 60 * 60, // 30 days
+      });
+    }
     
     return tokens;
   } catch (error) {
