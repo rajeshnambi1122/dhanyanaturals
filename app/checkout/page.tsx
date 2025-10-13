@@ -13,6 +13,7 @@ import { ArrowLeft, CreditCard, MapPin, User, Phone, Mail, Loader2, ShoppingBag,
 import Image from "next/image";
 import Link from "next/link";
 import { CartItemWithDetails, CartItem } from "@/lib/types";
+import ZohoPaymentWidget from "@/components/ZohoPaymentWidget";
 
 interface ShippingAddress {
   street: string;
@@ -44,6 +45,7 @@ function CheckoutPageContent() {
   const buyNowMode = searchParams.get('buyNow') === 'true';
   const buyNowProductId = searchParams.get('product');
   const buyNowQuantity = parseInt(searchParams.get('quantity') || '1');
+  const isRetry = searchParams.get('retry') === 'true';
 
   // Form states
   const [customerDetails, setCustomerDetails] = useState<CustomerDetails>({
@@ -63,6 +65,7 @@ function CheckoutPageContent() {
   const [paymentMethod, setPaymentMethod] = useState('cod');
   const [processingPayment, setProcessingPayment] = useState(false);
   const [notes, setNotes] = useState('');
+  const [showPaymentWidget, setShowPaymentWidget] = useState(false);
 
   // Scroll to top when order success is shown
   useEffect(() => {
@@ -71,6 +74,18 @@ function CheckoutPageContent() {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   }, [orderSuccess]);
+
+  // Handle retry after authentication
+  useEffect(() => {
+    if (isRetry) {
+      const pendingOrder = sessionStorage.getItem('pendingOrder');
+      if (pendingOrder && paymentMethod === 'online') {
+        // Automatically retry the payment
+        const orderData = JSON.parse(pendingOrder);
+        handleOnlinePayment(orderData);
+      }
+    }
+  }, [isRetry]);
 
   // Load cart items and populate user details
   useEffect(() => {
@@ -203,40 +218,49 @@ function CheckoutPageContent() {
 
   // Shipping is now automatically recalculated via useMemo when state or cart changes
 
-  // Handle online payment with Zoho
+  // Handle online payment with Zoho Widget
   const handleOnlinePayment = async (orderData: any) => {
     setProcessingPayment(true);
     try {
-      // Create payment with Zoho
-      const paymentResponse = await fetch('/api/payments/create', {
+      // First check if we have a valid session by trying to create a payment session
+      const sessionResponse = await fetch('/api/payments/session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          amount: total,
-          orderId: `ORDER_${Date.now()}`, // Temporary order ID
-          customerDetails: customerDetails,
-          returnUrl: `${window.location.origin}/payment/callback`
+          amount: total.toString(),
+          currency_code: 'INR',
+          description: `Order payment for Dhanya Naturals - Order #ORDER_${Date.now()}`,
+          reference_number: `ORDER_${Date.now()}`,
+          address: {
+            name: customerDetails.name,
+            email: customerDetails.email,
+            phone: customerDetails.phone
+          }
         })
       });
 
-      if (!paymentResponse.ok) {
-        const errorData = await paymentResponse.json().catch(() => ({}));
-        const errorMessage = errorData.error || 'Failed to create payment';
+      if (!sessionResponse.ok) {
+        const errorData = await sessionResponse.json().catch(() => ({}));
+        
+        // Handle authentication requirement
+        if (sessionResponse.status === 401 && errorData.authUrl) {
+          // Store order data before redirecting to auth
+          sessionStorage.setItem('pendingOrder', JSON.stringify(orderData));
+          sessionStorage.setItem('returnToCheckout', 'true');
+          
+          // Redirect to Zoho OAuth
+          window.location.href = errorData.authUrl;
+          return;
+        }
+        
+        const errorMessage = errorData.error || 'Failed to create payment session';
         throw new Error(errorMessage);
       }
 
-      const paymentData = await paymentResponse.json();
+      // If session creation is successful, show the payment widget
+      setShowPaymentWidget(true);
+      setProcessingPayment(false);
       
-      if (paymentData.success && paymentData.payment_url) {
-        // Store order data temporarily for after payment
-        sessionStorage.setItem('pendingOrder', JSON.stringify(orderData));
-        sessionStorage.setItem('paymentId', paymentData.payment_id);
-        
-        // Redirect to Zoho payment page
-        window.location.href = paymentData.payment_url;
-      } else {
-        throw new Error('Invalid payment response');
-      }
     } catch (error) {
       console.error('Payment error:', error);
       
@@ -256,6 +280,64 @@ function CheckoutPageContent() {
       alert(errorMessage);
       setProcessingPayment(false);
     }
+  };
+
+  // Handle successful payment from widget
+  const handlePaymentSuccess = async (paymentData: any) => {
+    try {
+      // Store order data temporarily for after payment
+      const orderData = {
+        customerDetails,
+        shippingAddress,
+        cartItems: cartItems.map(item => ({
+          productId: item.product_id,
+          quantity: item.quantity,
+          price: item.price
+        })),
+        paymentMethod: 'online',
+        total,
+        notes
+      };
+
+      sessionStorage.setItem('pendingOrder', JSON.stringify(orderData));
+      sessionStorage.setItem('paymentId', paymentData.payment_id);
+      
+      // Verify payment with backend
+      const response = await fetch('/api/payments/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ payment_id: paymentData.payment_id }),
+      });
+
+      if (response.ok) {
+        // Complete the order
+        await fetch('/api/orders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(orderData),
+        });
+        
+        // Clear session storage
+        sessionStorage.removeItem('pendingOrder');
+        sessionStorage.removeItem('paymentId');
+        
+        // Redirect to success page
+        router.push('/payment/success');
+      } else {
+        throw new Error('Payment verification failed');
+      }
+    } catch (error) {
+      console.error('Payment verification error:', error);
+      alert('Payment verification failed. Please contact support.');
+    }
+    setShowPaymentWidget(false);
+  };
+
+  // Handle payment error from widget
+  const handlePaymentError = (error: any) => {
+    console.error('Payment widget error:', error);
+    setShowPaymentWidget(false);
+    alert('Payment failed. Please try again.');
   };
 
   // Handle form submission
@@ -872,6 +954,20 @@ function CheckoutPageContent() {
           </div>
         </div>
       </div>
+
+      {/* Zoho Payment Widget */}
+      {showPaymentWidget && (
+        <ZohoPaymentWidget
+          amount={total}
+          currency="INR"
+          description={`Order payment for Dhanya Naturals - Order #ORDER_${Date.now()}`}
+          customerDetails={customerDetails}
+          orderId={`ORDER_${Date.now()}`}
+          onSuccess={handlePaymentSuccess}
+          onError={handlePaymentError}
+          onClose={() => setShowPaymentWidget(false)}
+        />
+      )}
     </div>
   );
 }

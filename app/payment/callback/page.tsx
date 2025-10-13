@@ -15,14 +15,42 @@ function PaymentCallbackInner() {
   useEffect(() => {
     const handlePaymentCallback = async () => {
       try {
-        // Get payment parameters from URL
+        // Get parameters from URL
         const paymentId = searchParams.get('payment_id');
         const status = searchParams.get('status');
         const error = searchParams.get('error');
+        const authCompleted = searchParams.get('auth_completed');
+
+        // Handle OAuth callback
+        if (status === 'oauth_success' && authCompleted === 'true') {
+          setStatus('success');
+          setMessage('Authentication successful! You can now process payments.');
+          
+          // Check if we should return to checkout with pending order
+          const returnToCheckout = sessionStorage.getItem('returnToCheckout');
+          const pendingOrder = sessionStorage.getItem('pendingOrder');
+          
+          if (returnToCheckout === 'true' && pendingOrder) {
+            sessionStorage.removeItem('returnToCheckout');
+            setMessage('Authentication successful! Returning to checkout...');
+            setTimeout(() => router.push('/checkout?retry=true'), 1500);
+          } else {
+            setTimeout(() => router.push('/checkout'), 2000);
+          }
+          return;
+        }
 
         if (error) {
+          let errorMessage = 'An error occurred. Please try again.';
+          if (error === 'no_code') {
+            errorMessage = 'Authorization failed. No authorization code received.';
+          } else if (error === 'token_exchange_failed') {
+            errorMessage = 'Failed to complete authorization. Please try again.';
+          } else if (error === 'server_error') {
+            errorMessage = 'Server error occurred. Please contact support.';
+          }
           setStatus('error');
-          setMessage('Payment failed. Please try again.');
+          setMessage(errorMessage);
           setTimeout(() => router.push('/checkout'), 3000);
           return;
         }

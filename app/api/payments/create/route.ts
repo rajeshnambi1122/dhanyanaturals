@@ -1,19 +1,34 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getAccessToken, getZohoAuthUrl } from '@/lib/zoho-auth'
 
 const ZOHO_API_BASE = 'https://payments.zoho.in/api/v1'
-const ZOHO_ACCESS_TOKEN = process.env.ZOHO_ACCESS_TOKEN
 const ZOHO_ACCOUNT_ID = process.env.ZOHO_ACCOUNT_ID
 
 export async function POST(request: NextRequest) {
   try {
     console.log('Payment creation request received')
     
-    // Check environment variables first
+    // Get access token from cookies
+    const ZOHO_ACCESS_TOKEN = await getAccessToken()
+    
+    // Check credentials
     if (!ZOHO_ACCESS_TOKEN || !ZOHO_ACCOUNT_ID) {
       console.error('Missing Zoho credentials:', { 
         hasAccessToken: !!ZOHO_ACCESS_TOKEN,
         hasAccountId: !!ZOHO_ACCOUNT_ID
       })
+      
+      // If no access token, return auth URL for client to redirect
+      if (!ZOHO_ACCESS_TOKEN) {
+        return NextResponse.json(
+          { 
+            error: 'Authentication required',
+            authUrl: getZohoAuthUrl()
+          },
+          { status: 401 }
+        )
+      }
+      
       return NextResponse.json(
         { error: 'Payment gateway not configured. Please contact support.' },
         { status: 500 }

@@ -25,6 +25,9 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
+      <head>
+        <script src="https://static.zohocdn.com/zpay/zpay-js/v1/zpayments.js" async></script>
+      </head>
       <body className={poppins.className}>
         <AuthProvider>
           <CartProvider>
