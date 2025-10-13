@@ -13,11 +13,15 @@ export interface ZohoTokens {
  * Get the authorization URL for Zoho OAuth
  */
 export function getZohoAuthUrl(): string {
+  // Get the base URL with fallback
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 
+                  (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000');
+  
   const params = new URLSearchParams({
     response_type: 'code',
     client_id: process.env.ZOHO_CLIENT_ID!,
     scope: 'ZohoPay.payments.CREATE,ZohoPay.payments.READ,ZohoPay.payments.UPDATE',
-    redirect_uri: `${process.env.NEXT_PUBLIC_APP_URL}/api/auth/zoho/callback`,
+    redirect_uri: `${baseUrl}/api/auth/zoho/callback`,
     access_type: 'offline', // To get refresh token
     prompt: 'consent', // Force consent to get refresh token
   });

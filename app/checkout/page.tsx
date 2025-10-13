@@ -222,7 +222,12 @@ function CheckoutPageContent() {
   const handleOnlinePayment = async (orderData: any) => {
     setProcessingPayment(true);
     try {
-      // First check if we have a valid session by trying to create a payment session
+      // Check if Zoho Payments is properly configured
+      if (!process.env.NEXT_PUBLIC_ZOHO_ACCOUNT_ID || !process.env.NEXT_PUBLIC_ZOHO_API_KEY) {
+        throw new Error('Payment gateway not configured. Please contact support.');
+      }
+
+      // Create payment session directly (this should use API keys, not OAuth)
       const sessionResponse = await fetch('/api/payments/session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -241,20 +246,7 @@ function CheckoutPageContent() {
 
       if (!sessionResponse.ok) {
         const errorData = await sessionResponse.json().catch(() => ({}));
-        
-        // Handle authentication requirement
-        if (sessionResponse.status === 401 && errorData.authUrl) {
-          // Store order data before redirecting to auth
-          sessionStorage.setItem('pendingOrder', JSON.stringify(orderData));
-          sessionStorage.setItem('returnToCheckout', 'true');
-          
-          // Redirect to Zoho OAuth
-          window.location.href = errorData.authUrl;
-          return;
-        }
-        
-        const errorMessage = errorData.error || 'Failed to create payment session';
-        throw new Error(errorMessage);
+        throw new Error(errorData.error || 'Failed to create payment session');
       }
 
       // If session creation is successful, show the payment widget

@@ -5,64 +5,64 @@
 Create a `.env.local` file in your project root with:
 
 ```env
-# Zoho Payments Configuration
-ZOHO_CLIENT_ID=your_client_id_here
-ZOHO_CLIENT_SECRET=your_client_secret_here
-ZOHO_ACCESS_TOKEN=your_access_token_here
+# Zoho Payments Configuration (Required)
 ZOHO_ACCOUNT_ID=your_account_id_here
 
-# Widget Configuration (for client-side)
+# OAuth Configuration (Required for server-side API calls)
+ZOHO_CLIENT_ID=your_client_id_here
+ZOHO_CLIENT_SECRET=your_client_secret_here
+
+# Widget Configuration (for client-side widget)
 NEXT_PUBLIC_ZOHO_ACCOUNT_ID=your_account_id_here
 NEXT_PUBLIC_ZOHO_API_KEY=your_api_key_here
 
-# App Configuration
+# App Configuration (IMPORTANT: Set this to your actual domain)
 NEXT_PUBLIC_APP_URL=https://yourdomain.com
 ```
 
-## OAuth2 Setup Steps
+## Setup Steps
 
-### 1. Create Zoho OAuth2 App
+### 1. OAuth2 Setup (Required for Server-side API calls)
 1. Go to https://api-console.zoho.in/
 2. Click "Add Client" → "Server-based Applications"
 3. Configure:
    - Application Name: "Dhanya Naturals Payment Integration"
    - Homepage URL: `https://yourdomain.com`
-   - Authorized Redirect URIs: `https://yourdomain.com/api/auth/zoho/callback` (Note: Different from both Supabase auth/callback and payment/callback)
+   - Authorized Redirect URIs: `https://yourdomain.com/api/auth/zoho/callback`
+4. Note down your Client ID and Client Secret
+5. Add them to your environment variables
 
-### 2. Required Scopes
-Ensure your OAuth2 app has these scopes:
+### 2. Get API Key (For Widget Only)
+1. Go to Zoho Payments > Settings > Developer Space
+2. Generate an API Key
+3. Note down your Account ID and API Key
+4. Add both to your environment variables
+
+### 3. Required Scopes (OAuth2 Only)
+If using OAuth2, ensure these scopes:
 - `ZohoPay.payments.CREATE` - Create payment links
 - `ZohoPay.payments.READ` - Read payment details
 - `ZohoPay.payments.UPDATE` - Update payment links
 
-### 3. OAuth2 Flow Implementation
+## How It Actually Works
 
-The application now implements a complete OAuth2 flow:
+### For Customers (Simple Payment Flow):
+1. **Customer clicks "Pay Now"** in checkout
+2. **Payment widget appears** with payment options (cards, UPI, net banking)
+3. **Customer enters payment details** directly
+4. **Payment is processed** immediately
+5. **No Zoho login required** for customers
 
-1. **Initial Authentication**: When a user attempts to make a payment without authentication:
-   - The payment API returns a 401 status with an auth URL
-   - User is redirected to Zoho's consent screen
-   
-2. **Authorization Callback**: After user approves on Zoho:
-   - Zoho redirects to `/api/auth/zoho/callback` with an authorization code
-   - The server exchanges the code for access and refresh tokens
-   - Tokens are stored as secure HTTP-only cookies
-   - User is redirected back to `/payment/callback` with success status
+### For You (Merchant Setup):
+1. **Get API Key** from Zoho Payments settings
+2. **Configure environment variables** with your API key and account ID
+3. **That's it!** No OAuth needed for basic payments
 
-3. **Automatic Retry**: If user was in checkout:
-   - The pending order is preserved in sessionStorage
-   - After successful authentication, checkout automatically retries the payment
-
-4. **Token Management**:
-   - Access tokens are automatically refreshed when expired
-   - Tokens are stored securely in HTTP-only cookies
-   - No manual token generation needed
-
-5. **Checkout Widget Integration**:
-   - Embedded payment widget for seamless user experience
-   - No redirects - payments processed directly on your website
-   - Automatic session creation and token validation
-   - Real-time payment status updates
+### Widget Integration:
+- **Embedded payment widget** for seamless user experience
+- **No redirects** - payments processed directly on your website
+- **Real-time payment status** updates
+- **Multiple payment methods** supported (cards, UPI, net banking)
 
 ## Current Implementation Status
 
@@ -72,12 +72,12 @@ The application now implements a complete OAuth2 flow:
 - Fixed request format
 - Updated to OAuth2 authentication
 - Made return_url optional for development
-- **Separated callback routes**: `/auth/callback` for Supabase, `/payment/callback` for payment results, `/api/auth/zoho/callback` for OAuth
-- **Implemented complete OAuth2 flow**: Automatic code exchange, token storage, and refresh
-- **Seamless authentication**: Users are automatically redirected to Zoho consent when needed
-- **Token management**: Secure HTTP-only cookie storage with automatic refresh
-- **Checkout Widget**: Embedded payment widget for better user experience
-- **Hybrid approach**: OAuth for session management, API key for widget initialization
+- **OAuth2 authentication**: Proper server-side authentication with access tokens
+- **Customer-friendly flow**: No OAuth redirects for customers
+- **Embedded payment widget**: Payments processed directly on your website
+- **Multiple payment methods**: Cards, UPI, net banking support
+- **Real-time processing**: Immediate payment status updates
+- **Secure implementation**: OAuth for server-side, API keys for widget
 
 ## Testing the Integration
 
@@ -85,6 +85,38 @@ The application now implements a complete OAuth2 flow:
 2. Start your development server: `npm run dev`
 3. Go to checkout page and test online payment
 4. Check console logs for any errors
+
+## Troubleshooting
+
+### OAuth Redirect URI Issues
+If you see `redirect_uri=undefined/api/auth/zoho/callback` in the OAuth URL:
+
+1. **Check Environment Variables**: Ensure `NEXT_PUBLIC_APP_URL` is set in your `.env.local`:
+   ```env
+   NEXT_PUBLIC_APP_URL=https://yourdomain.com
+   ```
+
+2. **For Development**: Use your local development URL:
+   ```env
+   NEXT_PUBLIC_APP_URL=http://localhost:3000
+   ```
+
+3. **For Production**: Use your actual production domain:
+   ```env
+   NEXT_PUBLIC_APP_URL=https://www.dhanyanaturals.in
+   ```
+
+4. **Restart Development Server**: After updating environment variables, restart your Next.js server:
+   ```bash
+   npm run dev
+   ```
+
+### Widget Not Loading
+If the payment widget doesn't appear:
+
+1. Check browser console for JavaScript errors
+2. Verify `NEXT_PUBLIC_ZOHO_ACCOUNT_ID` and `NEXT_PUBLIC_ZOHO_API_KEY` are set
+3. Ensure the Zoho Payments script is loading (check Network tab in browser dev tools)
 
 ## Production Considerations
 

@@ -11,16 +11,18 @@ export async function GET(request: NextRequest) {
     // Handle OAuth errors
     if (error) {
       console.error('OAuth error:', error);
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
       return NextResponse.redirect(
-        new URL(`/payment/callback?error=${encodeURIComponent(error)}`, process.env.NEXT_PUBLIC_APP_URL!)
+        new URL(`/payment/callback?error=${encodeURIComponent(error)}`, baseUrl)
       );
     }
     
     // Validate authorization code
     if (!code) {
       console.error('No authorization code received');
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
       return NextResponse.redirect(
-        new URL('/payment/callback?error=no_code', process.env.NEXT_PUBLIC_APP_URL!)
+        new URL('/payment/callback?error=no_code', baseUrl)
       );
     }
     
@@ -30,7 +32,7 @@ export async function GET(request: NextRequest) {
       client_id: process.env.ZOHO_CLIENT_ID!,
       client_secret: process.env.ZOHO_CLIENT_SECRET!,
       code: code,
-      redirect_uri: `${process.env.NEXT_PUBLIC_APP_URL}/api/auth/zoho/callback`
+      redirect_uri: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/auth/zoho/callback`
     });
     
     console.log('Exchanging code for token...');
@@ -47,8 +49,9 @@ export async function GET(request: NextRequest) {
     
     if (!tokenResponse.ok) {
       console.error('Token exchange failed:', tokenData);
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
       return NextResponse.redirect(
-        new URL(`/payment/callback?error=token_exchange_failed`, process.env.NEXT_PUBLIC_APP_URL!)
+        new URL(`/payment/callback?error=token_exchange_failed`, baseUrl)
       );
     }
     
@@ -60,7 +63,8 @@ export async function GET(request: NextRequest) {
     
     // Redirect to client-side callback with success status
     // In production, you'd store these tokens securely server-side
-    const callbackUrl = new URL('/payment/callback', process.env.NEXT_PUBLIC_APP_URL!);
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    const callbackUrl = new URL('/payment/callback', baseUrl);
     callbackUrl.searchParams.set('status', 'oauth_success');
     callbackUrl.searchParams.set('auth_completed', 'true');
     
@@ -88,8 +92,9 @@ export async function GET(request: NextRequest) {
     
   } catch (error) {
     console.error('OAuth callback error:', error);
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     return NextResponse.redirect(
-      new URL('/payment/callback?error=server_error', process.env.NEXT_PUBLIC_APP_URL!)
+      new URL('/payment/callback?error=server_error', baseUrl)
     );
   }
 }
