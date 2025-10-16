@@ -1,27 +1,10 @@
 import { MapPin, Phone, Mail, Clock, Instagram } from "lucide-react";
-import ContactForm from "./ContactForm";
 
 export default function ContactPage() {
 
   return (
     <div className="min-h-screen glass-background py-6">
       <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Hero Section */}
-        <div className="text-center mb-16">
-          <h1 className="text-4xl md:text-5xl font-bold gradient-text mb-6 animate-fade-in">
-            Get In Touch
-          </h1>
-          <p className="text-lg text-gray-600 max-w-3xl mx-auto animate-slide-up">
-            We'd love to hear from you! Whether you have questions about our products, 
-            need wellness advice, or want to share your experience, we're here to help.
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 max-w-7xl mx-auto">
-          {/* Contact Form */}
-          <div className="flex justify-center lg:justify-start">
-            <ContactForm />
-          </div>
 
           {/* Contact Information */}
           <div className="flex justify-center lg:justify-start">
@@ -116,6 +99,5 @@ export default function ContactPage() {
           </div>
         </div>
       </div>
-    </div>
   );
 }

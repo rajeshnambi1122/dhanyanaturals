@@ -32,7 +32,7 @@ export async function POST(request: Request) {
     })
 
     await resend.emails.send({
-      from: "Dhanya Naturals <dhanyanaturals01@gmail.com>",
+      from: "Dhanya Naturals <orders@dhanyanaturals.in>",
       to,
       subject: `Your order #${orderId} has been placed` ,
       html,

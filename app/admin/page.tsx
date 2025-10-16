@@ -76,7 +76,7 @@ export default function AdminDashboard() {
   const handleUpdateOrderStatus = async (orderId: number, newStatus: string) => {
     setUpdatingOrderStatus(true)
     try {
-      const updated = await orderService.updateOrderStatus(orderId, newStatus as Order["status"])
+      const updated = await orderService.updateOrderStatus(orderId, { status: newStatus as Order["status"] })
       
       // Refresh orders list
       const updatedOrders = await orderService.getOrders()

@@ -1,64 +1,97 @@
 import { NextRequest, NextResponse } from 'next/server'
-
-const ZOHO_API_BASE = 'https://payments.zoho.in/api/v1'
-const ZOHO_ACCOUNT_ID = process.env.ZOHO_ACCOUNT_ID
-const ZOHO_API_KEY = process.env.ZOHO_API_KEY
+import { verifyPayment } from '@/lib/zoho-auth-server'
+import { supabase } from '@/lib/supabase'
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { payment_id } = body
+    const { payment_id, payments_session_id, order_id } = body
 
-    if (!payment_id) {
+    console.log('Payment verification request:', { payment_id, payments_session_id, order_id });
+
+    if (!payment_id && !payments_session_id) {
+      console.error('Missing payment identifiers in verification request');
       return NextResponse.json(
-        { error: 'Payment ID is required' },
+        { error: 'Payment ID or Payment Session ID is required' },
         { status: 400 }
       )
     }
 
-    if (!ZOHO_ACCOUNT_ID || !ZOHO_API_KEY) {
+    // Use the centralized Zoho service for payment verification
+    const result = await verifyPayment(payment_id, payments_session_id)
+
+    // Check if verification failed
+    if (!result.success) {
       return NextResponse.json(
-        { error: 'Payment gateway not configured' },
+        { error: result.error || 'Payment verification failed' },
         { status: 500 }
       )
     }
 
-    // Verify payment status with Zoho (API key auth)
-    const response = await fetch(`${ZOHO_API_BASE}/payments/${payment_id}?account_id=${encodeURIComponent(ZOHO_ACCOUNT_ID)}`, {
-      method: 'GET',
-      headers: {
-        'X-API-KEY': ZOHO_API_KEY,
-      },
-    })
-
-    if (!response.ok) {
-      const errorData = await response.text()
-      console.error('Zoho verify API Error:', errorData)
+    // If no payment data was found
+    if (!result.payment) {
       return NextResponse.json(
-        { error: 'Payment verification failed' },
-        { status: 500 }
+        { error: 'Payment verification failed - no valid payment data found' },
+        { status: 404 }
       )
     }
 
-    const paymentData = await response.json()
+    // Update order status in database if we have an order_id
+    if (order_id) {
+      try {
+        let orderStatus = 'pending'
+        let paymentStatus = result.payment.status
 
-    // Zoho Payments returns amounts in the base currency unit (e.g., rupees)
+        if (result.is_success) {
+          orderStatus = 'confirmed'
+          paymentStatus = 'success'
+        } else if (result.is_failed) {
+          orderStatus = 'cancelled'
+          paymentStatus = 'failed'
+        }
+
+        const { error: updateError } = await supabase
+          .from('orders')
+          .update({
+            status: orderStatus,
+            payment_status: paymentStatus,
+            payment_id: result.payment.id,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', order_id)
+
+        if (updateError) {
+          console.error('Failed to update order status:', updateError)
+        } else {
+          console.log(`Order ${order_id} updated to status: ${orderStatus}`)
+        }
+      } catch (updateError) {
+        console.error('Error updating order status:', updateError)
+      }
+    }
+
+    // Log successful verification
+    console.log('Payment verification successful:', {
+      payment_id: result.payment?.id,
+      is_success: result.is_success,
+      is_failed: result.is_failed,
+      order_updated: order_id ? true : false
+    });
+    
+    // Return payment verification result
     return NextResponse.json({
       success: true,
-      payment: {
-        id: paymentData.payment_id,
-        status: paymentData.status,
-        amount: paymentData.amount,
-        order_id: paymentData.order_id,
-        created_at: paymentData.created_at,
-        payment_method: paymentData.payment_method,
-      }
+      payment: result.payment,
+      order_updated: order_id ? true : false,
+      is_success: result.is_success,
+      is_failed: result.is_failed,
+      testing_mode: true // Indicate that we're in testing mode
     })
 
   } catch (error) {
     console.error('Payment verification error:', error)
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     )
   }

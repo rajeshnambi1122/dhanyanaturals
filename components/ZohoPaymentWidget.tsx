@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from 'react';
+import { initializeZohoPaymentWidget } from '@/lib/zoho-auth-client';
 
 interface ZohoPaymentWidgetProps {
   amount: number;
@@ -36,6 +37,21 @@ export default function ZohoPaymentWidget({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const instanceRef = useRef<any>(null);
+  
+  // Check if payment was already completed (from localStorage)
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const paymentCompleted = localStorage.getItem('payment_completed') === 'true';
+      const paymentId = localStorage.getItem('payment_id');
+      
+      if (paymentCompleted && paymentId) {
+        console.log('Payment already completed, closing widget');
+        // Don't re-trigger onSuccess - just close the widget
+        onClose();
+        return;
+      }
+    }
+  }, [onClose]);
 
   useEffect(() => {
     const initializeWidget = async () => {
@@ -51,30 +67,26 @@ export default function ZohoPaymentWidget({
           throw new Error('Zoho Payments script failed to load');
         }
 
-        // Create payment session first
-        const sessionResponse = await fetch('/api/payments/session', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            amount: amount.toString(),
-            currency_code: currency,
-            description,
-            reference_number: orderId,
-            address: {
-              name: customerDetails.name,
-              email: customerDetails.email,
-              phone: customerDetails.phone
-            }
-          })
-        });
+        // Use our centralized helper to create a payment session
+        const sessionResult = await initializeZohoPaymentWidget(
+          amount,
+          currency,
+          description,
+          orderId,
+          customerDetails
+        );
 
-        if (!sessionResponse.ok) {
-          const errorData = await sessionResponse.json().catch(() => ({}));
-          throw new Error(errorData.error || 'Failed to create payment session');
+        if (!sessionResult.success) {
+          // Check if authentication is required
+          if (sessionResult.authUrl) {
+            // Redirect to authentication
+            window.location.href = sessionResult.authUrl;
+            return;
+          }
+          throw new Error(sessionResult.error || 'Failed to create payment session');
         }
 
-        const sessionData = await sessionResponse.json();
-        const paymentsSessionId = sessionData.payments_session_id;
+        const paymentsSessionId = sessionResult.payments_session_id;
 
         if (!paymentsSessionId) {
           throw new Error('Invalid session response');
@@ -110,26 +122,38 @@ export default function ZohoPaymentWidget({
         // Initiate payment
         const paymentData = await instanceRef.current.requestPaymentMethod(options);
         
+        console.log('Payment widget response:', paymentData);
+        
         if (paymentData.payment_id) {
+          // Call onSuccess - parent component will handle closing/unmounting
           onSuccess(paymentData);
         } else if (paymentData.code === 'error') {
           onError(paymentData);
+        } else if (paymentData.code === 'cancelled' || paymentData.status === 'cancelled') {
+          // User cancelled/closed the widget - don't treat as error
+          console.log('Payment widget closed by user');
+          onClose(); // Just close, don't create order
+        } else {
+          // Handle any other cases (like widget closure without explicit cancellation)
+          console.log('Payment widget closed without explicit cancellation');
+          onClose(); // Just close, don't create order
         }
 
       } catch (err: any) {
         console.error('Payment widget error:', err);
-        setError(err.message || 'Payment failed');
-        onError(err);
+        
+        // Check if this is a widget closure vs actual error
+        if (err.message?.toLowerCase().includes('cancelled') || 
+            err.message?.toLowerCase().includes('closed') ||
+            err.code === 'cancelled') {
+          console.log('Payment widget closed by user (caught in error)');
+          onClose(); // Just close, don't create order
+        } else {
+          setError(err.message || 'Payment failed');
+          onError(err);
+        }
       } finally {
         setIsLoading(false);
-        // Close the widget
-        if (instanceRef.current) {
-          try {
-            await instanceRef.current.close();
-          } catch (closeErr) {
-            console.warn('Error closing widget:', closeErr);
-          }
-        }
       }
     };
 

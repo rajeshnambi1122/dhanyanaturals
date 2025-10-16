@@ -66,7 +66,67 @@ function CheckoutPageContent() {
   const [processingPayment, setProcessingPayment] = useState(false);
   const [notes, setNotes] = useState('');
   const [showPaymentWidget, setShowPaymentWidget] = useState(false);
+  // Use localStorage to persist payment completion state across page loads
+  const [paymentCompleted, setPaymentCompleted] = useState(() => {
+    // Check localStorage on initial render (client-side only)
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('payment_completed') === 'true';
+    }
+    return false;
+  });
 
+  // Check for completed payment on page load
+  useEffect(() => {
+    // If we have a completed payment in localStorage but no order success yet
+    if (paymentCompleted && !orderSuccess && !submitting) {
+      const storedPaymentId = localStorage.getItem('payment_id');
+      const storedPaymentTime = localStorage.getItem('payment_time');
+      
+      // Check if the payment was recent (within last 10 minutes)
+      const isRecent = storedPaymentTime && 
+        (new Date().getTime() - new Date(storedPaymentTime).getTime() < 10 * 60 * 1000);
+      
+      if (storedPaymentId && isRecent) {
+        console.log('Found completed payment in localStorage, verifying:', storedPaymentId);
+        
+        // Auto-verify the payment
+        (async () => {
+          setSubmitting(true);
+          try {
+            const verifyResponse = await fetch('/api/payments/verify', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ payment_id: storedPaymentId }),
+            });
+            
+            const verifyResult = await verifyResponse.json();
+            console.log('Auto-verification result:', verifyResult);
+            
+            if (verifyResponse.ok && verifyResult.is_success) {
+              // Payment verified successfully - create order with confirmed status
+              handlePaymentSuccess({ payment_id: storedPaymentId });
+            } else {
+              // Clear invalid payment data
+              localStorage.removeItem('payment_completed');
+              localStorage.removeItem('payment_id');
+              localStorage.removeItem('payment_time');
+              setPaymentCompleted(false);
+            }
+          } catch (error) {
+            console.error('Auto-verification error:', error);
+            setSubmitting(false);
+          }
+        })();
+      } else {
+        // Clear stale payment data
+        localStorage.removeItem('payment_completed');
+        localStorage.removeItem('payment_id');
+        localStorage.removeItem('payment_time');
+        setPaymentCompleted(false);
+      }
+    }
+  }, [paymentCompleted, orderSuccess, submitting]);
+  
   // Scroll to top when order success is shown
   useEffect(() => {
     if (orderSuccess) {
@@ -169,6 +229,7 @@ function CheckoutPageContent() {
             return acc;
           }, {} as Record<number, any>);
           
+          // Check for out-of-stock items
           const cartWithDetails = cartItems.map((item: CartItem) => {
             const product = productMap[item.product_id];
             return {
@@ -181,7 +242,26 @@ function CheckoutPageContent() {
             };
           });
           
-          setCartItems(cartWithDetails);
+          // Filter out any out-of-stock items
+          const outOfStockItems = cartWithDetails.filter((item: CartItemWithDetails) => !item.in_stock);
+          if (outOfStockItems.length > 0) {
+            // Create a list of out-of-stock items
+            const outOfStockNames = outOfStockItems.map((item: CartItemWithDetails) => item.product_name).join(", ");
+            alert(`The following items in your cart are out of stock: ${outOfStockNames}. They have been removed from checkout.`);
+            
+            // Remove out-of-stock items from cart
+            const inStockItems = cartWithDetails.filter((item: CartItemWithDetails) => item.in_stock);
+            setCartItems(inStockItems);
+            
+            // If no items are in stock, redirect to cart
+            if (inStockItems.length === 0) {
+              alert("All items in your cart are out of stock. Redirecting to cart.");
+              router.push('/cart');
+              return;
+            }
+          } else {
+            setCartItems(cartWithDetails);
+          }
         }
         
         setDataLoaded(true); // Mark data as loaded to prevent duplicate calls
@@ -202,7 +282,7 @@ function CheckoutPageContent() {
     
     // State-based shipping
     if (state.toLowerCase() === 'tamil nadu' || state.toLowerCase() === 'tn') {
-      return 50; // ₹50 for Tamil Nadu
+      return 0; // ₹50 for Tamil Nadu
     } else {
       return 80; // ₹80 for rest of India
     }
@@ -220,6 +300,12 @@ function CheckoutPageContent() {
 
   // Handle online payment with Zoho Widget
   const handleOnlinePayment = async (orderData: any) => {
+    // If payment was already completed, don't show the widget again
+    if (paymentCompleted) {
+      console.log('Payment already completed, skipping payment widget');
+      return;
+    }
+
     setProcessingPayment(true);
     try {
       // Check if Zoho Payments is properly configured
@@ -276,60 +362,217 @@ function CheckoutPageContent() {
 
   // Handle successful payment from widget
   const handlePaymentSuccess = async (paymentData: any) => {
+    console.log('Payment successful:', paymentData);
+    
+    // IMMEDIATELY close the payment widget by unmounting it
+    setShowPaymentWidget(false);
+    setSubmitting(true);
+    
+    // Store payment completion in state and localStorage
+    setPaymentCompleted(true);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('payment_completed', 'true');
+      localStorage.setItem('payment_id', paymentData.payment_id || '');
+      localStorage.setItem('payment_time', new Date().toISOString());
+    }
+    
     try {
-      // Store order data temporarily for after payment
-      const orderData = {
-        customerDetails,
-        shippingAddress,
-        cartItems: cartItems.map(item => ({
-          productId: item.product_id,
-          quantity: item.quantity,
-          price: item.price
-        })),
-        paymentMethod: 'online',
-        total,
-        notes
-      };
-
-      sessionStorage.setItem('pendingOrder', JSON.stringify(orderData));
-      sessionStorage.setItem('paymentId', paymentData.payment_id);
-      
-      // Verify payment with backend
-      const response = await fetch('/api/payments/verify', {
+      // Verify payment with backend first
+      const verifyResponse = await fetch('/api/payments/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ payment_id: paymentData.payment_id }),
+        body: JSON.stringify({ 
+          payment_id: paymentData.payment_id,
+          payments_session_id: paymentData.payments_session_id 
+        }),
       });
 
-      if (response.ok) {
-        // Complete the order
-        await fetch('/api/orders', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(orderData),
-        });
+      const verifyResult = await verifyResponse.json();
+      console.log('Payment verification result:', verifyResult);
+      console.log('Verification details:', {
+        responseOk: verifyResponse.ok,
+        hasIsSuccess: 'is_success' in verifyResult,
+        isSuccessValue: verifyResult.is_success,
+        hasSuccess: 'success' in verifyResult,
+        successValue: verifyResult.success,
+        isFailed: verifyResult.is_failed
+      });
+      
+      // Add detailed logging to understand verification issues
+      if (!verifyResponse.ok) {
+        console.error('Payment verification HTTP error:', verifyResponse.status, verifyResponse.statusText);
+      }
+      
+      // Check if we have a successful verification
+      if (verifyResponse.ok && verifyResult.success && verifyResult.is_success) {
+        // Payment verified successfully - create order with confirmed status
+        const orderData = {
+          customer_name: customerDetails.name,
+          customer_email: customerDetails.email,
+          customer_phone: customerDetails.phone,
+          shipping_address: shippingAddress,
+          payment_method: 'Zoho Online Payment',
+          payment_id: paymentData.payment_id,
+          payment_status: 'success' as const,
+          items: cartItems.map(item => ({
+            product_id: item.product_id,
+            product_name: item.product_name,
+            quantity: item.quantity,
+            price: item.price,
+            total: item.price * item.quantity
+          })),
+          total_amount: total,
+          status: 'confirmed' as const, // Paid orders start as confirmed
+          notes: notes || ''
+        };
+
+        // Create order using existing orderService
+        const newOrder = await orderService.createOrder(orderData);
+        console.log('Order created successfully:', newOrder);
         
-        // Clear session storage
-        sessionStorage.removeItem('pendingOrder');
-        sessionStorage.removeItem('paymentId');
+        // Clear cart after successful order (only for regular cart checkout, not buy now)
+        if (!isBuyNow) {
+          const userId = user.user_id || user.id;
+          await userDataService.clearCart(userId);
+          await refreshUser();
+        }
         
-        // Redirect to success page
-        router.push('/payment/success');
+        // Clear payment data from localStorage after successful order creation
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('payment_completed');
+          localStorage.removeItem('payment_id');
+          localStorage.removeItem('payment_time');
+        }
+        
+        // Show success UI
+        setOrderId(newOrder.id);
+        setOrderSuccess(true);
+        
+        // Fire and forget: send order placed email
+        try {
+          await fetch('/api/email/placed', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              to: customerDetails.email,
+              orderId: newOrder.id,
+              customerName: customerDetails.name,
+              total: total,
+              items: cartItems
+            }),
+          });
+        } catch (emailError) {
+          console.error('Failed to send order email:', emailError);
+        }
+        
+        return; // Exit early to prevent further processing
       } else {
-        throw new Error('Payment verification failed');
+        throw new Error(verifyResult.error || 'Payment verification failed');
       }
     } catch (error) {
       console.error('Payment verification error:', error);
-      alert('Payment verification failed. Please contact support.');
+      
+      // Try to extract more detailed error information
+      let errorMessage = 'Payment verification failed. Please contact support.';
+      if (error instanceof Error) {
+        console.error('Error details:', error.message, error.stack);
+        // Don't show technical details to users, but log them for debugging
+      }
+      
+      // Show a more user-friendly message
+      alert(errorMessage);
+      
+      // Create a failed order for tracking
+      try {
+        const failedOrderData = {
+          customer_name: customerDetails.name,
+          customer_email: customerDetails.email,
+          customer_phone: customerDetails.phone,
+          shipping_address: shippingAddress,
+          payment_method: 'Zoho Online Payment',
+          payment_id: paymentData.payment_id,
+          payment_status: 'failed' as const,
+          items: cartItems.map(item => ({
+            product_id: item.product_id,
+            product_name: item.product_name,
+            quantity: item.quantity,
+            price: item.price,
+            total: item.price * item.quantity
+          })),
+          total_amount: total,
+          status: 'cancelled' as const,
+          notes: `Payment failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+        };
+
+        await orderService.createOrder(failedOrderData);
+        console.log('Failed order created for tracking');
+      } catch (orderError) {
+        console.error('Failed to create failed order:', orderError);
+      }
+    } finally {
+      setSubmitting(false);
+      setShowPaymentWidget(false);
     }
-    setShowPaymentWidget(false);
   };
 
   // Handle payment error from widget
-  const handlePaymentError = (error: any) => {
+  const handlePaymentError = async (error: any) => {
     console.error('Payment widget error:', error);
-    setShowPaymentWidget(false);
-    alert('Payment failed. Please try again.');
+    
+    // Check if this is a widget closure vs actual payment failure
+    const isWidgetClosure = error?.code === 'cancelled' || 
+                           error?.status === 'cancelled' || 
+                           error?.message?.toLowerCase().includes('cancelled') ||
+                           error?.message?.toLowerCase().includes('closed');
+    
+    if (isWidgetClosure) {
+      // User closed the widget - don't create an order, just close
+      console.log('Payment widget closed by user - no order created');
+      setShowPaymentWidget(false);
+      
+      // Reset payment completed state since it was cancelled
+      setPaymentCompleted(false);
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('payment_completed');
+        localStorage.removeItem('payment_id');
+        localStorage.removeItem('payment_time');
+      }
+      return;
+    }
+    
+    // This is an actual payment failure - create failed order for tracking
+    setSubmitting(true);
+    
+    try {
+      const failedOrderData = {
+        customer_name: customerDetails.name,
+        customer_email: customerDetails.email,
+        customer_phone: customerDetails.phone,
+        shipping_address: shippingAddress,
+        payment_method: 'Zoho Online Payment',
+        payment_status: 'failed' as const,
+        items: cartItems.map(item => ({
+          product_id: item.product_id,
+          product_name: item.product_name,
+          quantity: item.quantity,
+          price: item.price,
+          total: item.price * item.quantity
+        })),
+        total_amount: total,
+        status: 'cancelled' as const,
+        notes: `Payment failed: ${error?.message || error || 'Unknown payment error'}`
+      };
+
+      await orderService.createOrder(failedOrderData);
+      console.log('Failed order created for tracking payment failure');
+      alert('Payment failed. Please try again.');
+    } catch (orderError) {
+      console.error('Failed to create failed order:', orderError);
+      alert('Payment failed. Please try again.');
+    } finally {
+      setSubmitting(false);
+      setShowPaymentWidget(false);
+    }
   };
 
   // Handle form submission
@@ -344,6 +587,33 @@ function CheckoutPageContent() {
 
     if (!shippingAddress.street || !shippingAddress.city || !shippingAddress.state || !shippingAddress.zipCode) {
       alert('Please fill in all shipping address fields');
+      return;
+    }
+    
+    // Check if any items are out of stock or have insufficient quantity at submission time
+    const outOfStockItems = cartItems.filter(item => !item.in_stock);
+    const insufficientQuantityItems = cartItems.filter(item => 
+      item.in_stock && item.quantity > item.stock_quantity
+    );
+    
+    if (outOfStockItems.length > 0 || insufficientQuantityItems.length > 0) {
+      let message = '';
+      
+      if (outOfStockItems.length > 0) {
+        const outOfStockNames = outOfStockItems.map(item => item.product_name).join(", ");
+        message += `Sorry, the following items are no longer in stock: ${outOfStockNames}.\n\n`;
+      }
+      
+      if (insufficientQuantityItems.length > 0) {
+        const quantityIssues = insufficientQuantityItems.map(item => 
+          `${item.product_name} (requested: ${item.quantity}, available: ${item.stock_quantity})`
+        ).join(", ");
+        message += `The following items have insufficient quantity: ${quantityIssues}.`;
+      }
+      
+      message += "\n\nPlease update your cart before proceeding.";
+      alert(message);
+      router.push('/cart');
       return;
     }
 
@@ -364,15 +634,22 @@ function CheckoutPageContent() {
           total: item.price * item.quantity
         })),
         total_amount: total,
-        status: 'processing' as const,
+        status: 'processing' as const, // COD orders start as processing
+        payment_status: 'pending' as const,
         notes: notes || undefined
       };
 
-      // Handle online payment
-      if (paymentMethod === 'online') {
+    // Handle online payment
+    if (paymentMethod === 'online') {
+      // If payment was already completed, don't show the widget again
+      if (!paymentCompleted) {
         await handleOnlinePayment(orderData);
         return; // Exit here, completion will be handled by payment success page
+      } else {
+        console.log('Payment already completed, skipping payment widget');
+        // Continue with order creation if payment was already completed
       }
+    }
 
       // Handle COD - create order directly
       const newOrder = await orderService.createOrder(orderData);
@@ -571,7 +848,7 @@ function CheckoutPageContent() {
                 <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
               </svg>
             </div>
-            <div className="text-sm text-blue-800">
+            <div className="text-sm text-blue-800 flex-1">
               <p className="font-medium mb-1">🚚 Shipping Information</p>
               <ul className="space-y-1 text-xs">
                 <li>• <strong>Free shipping</strong> for orders above ₹999</li>
@@ -618,7 +895,13 @@ function CheckoutPageContent() {
                   </div>
                 </div>
                 <div>
-                  <Label htmlFor="email">Email Address *</Label>
+                  <Label htmlFor="email" className="flex items-center gap-2">
+                    Email Address * 
+                    <span className="text-xs text-green-600 font-medium flex items-center">
+                      <CheckCircle className="h-3 w-3 text-green-600 mr-1" />
+                      From Account
+                    </span>
+                  </Label>
                   <div className="relative">
                     <Input
                       id="email"
@@ -628,10 +911,6 @@ function CheckoutPageContent() {
                       className="glass-input bg-gray-50 cursor-not-allowed text-gray-700"
                       placeholder="your.email@example.com"
                     />
-                    <div className="absolute right-3 top-1/2 transform -translate-y-1/2 flex items-center gap-1">
-                      <CheckCircle className="h-4 w-4 text-green-600" />
-                      <span className="text-xs text-green-600 font-medium">From Account</span>
-                    </div>
                   </div>
                 </div>
               </div>
@@ -947,8 +1226,8 @@ function CheckoutPageContent() {
         </div>
       </div>
 
-      {/* Zoho Payment Widget */}
-      {showPaymentWidget && (
+      {/* Zoho Payment Widget - Only show if not in success state */}
+      {showPaymentWidget && !orderSuccess && (
         <ZohoPaymentWidget
           amount={total}
           currency="INR"

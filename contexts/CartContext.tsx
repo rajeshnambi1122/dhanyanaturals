@@ -65,7 +65,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         }]);
       }
       
-      // Let AuthContext sync happen naturally via useEffect
+      // Refresh AuthContext user data to ensure cart page has latest data
+      await refreshUser();
     } catch (error) {
       console.error('Error adding to cart:', error);
       // Revert optimistic update on error
@@ -87,7 +88,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       // Update local state optimistically
       setCartItems(prev => prev.filter(item => item.product_id !== productId));
       
-      // Let AuthContext sync happen naturally via useEffect
+      // Refresh AuthContext user data
+      await refreshUser();
     } catch (error) {
       console.error('Error removing from cart:', error);
       // Revert optimistic update on error
@@ -111,7 +113,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         item.product_id === productId ? { ...item, quantity } : item
       ));
       
-      // Let AuthContext sync happen naturally via useEffect
+      // Refresh AuthContext user data
+      await refreshUser();
     } catch (error) {
       console.error('Error updating quantity:', error);
       // Revert optimistic update on error
@@ -133,7 +136,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       // Update local state optimistically
       setCartItems([]);
       
-      // Let AuthContext sync happen naturally via useEffect
+      // Refresh AuthContext user data
+      await refreshUser();
     } catch (error) {
       console.error('Error clearing cart:', error);
       // Revert optimistic update on error

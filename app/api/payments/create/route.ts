@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
     if (returnUrl) {
       paymentData.return_url = returnUrl
     } else if (process.env.NEXT_PUBLIC_APP_URL) {
-      paymentData.return_url = `${process.env.NEXT_PUBLIC_APP_URL}/payment/callback`
+      paymentData.return_url = `${process.env.NEXT_PUBLIC_APP_URL}/checkout`
     }
 
     // Make API call to Zoho Payments

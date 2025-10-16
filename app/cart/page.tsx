@@ -3,6 +3,7 @@ import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { userDataService, productService } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
+import { useCart } from "@/contexts/CartContext";
 import Image from "next/image"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
@@ -16,7 +17,10 @@ export default function CartPage() {
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState<number | null>(null);
   const [hasInitialized, setHasInitialized] = useState(false);
+  const [featuredProducts, setFeaturedProducts] = useState<any[]>([]);
+  const [addingProduct, setAddingProduct] = useState<number | null>(null);
   const { user, loading: authLoading, refreshUser } = useAuth();
+  const { addToCart: addToCartContext } = useCart();
   const router = useRouter();
   const fetchingRef = useRef(false);
   const userIdRef = useRef<string | null>(null);
@@ -184,6 +188,26 @@ export default function CartPage() {
     }
   }, [user?.cart_items, hasInitialized, updating]);
 
+  // Fetch featured products for recommendations
+  useEffect(() => {
+    const fetchFeaturedProducts = async () => {
+      try {
+        const products = await productService.getProducts({ featured: true });
+        // Get 2 random featured products, excluding items already in cart
+        const cartProductIds = cartItems.map(item => item.product_id);
+        const availableProducts = products.filter(p => !cartProductIds.includes(p.id));
+        const randomProducts = availableProducts.sort(() => Math.random() - 0.5).slice(0, 2);
+        setFeaturedProducts(randomProducts);
+      } catch (error) {
+        console.error('Error fetching featured products:', error);
+      }
+    };
+
+    if (hasInitialized) {
+      fetchFeaturedProducts();
+    }
+  }, [cartItems, hasInitialized]);
+
   const [promoCode, setPromoCode] = useState("")
 
   const updateQuantity = useCallback(async (productId: number, newQuantity: number) => {
@@ -312,6 +336,22 @@ export default function CartPage() {
       setLoading(false);
     }
   }, [user, refreshUser]);
+
+  const addRecommendedProduct = async (productId: number) => {
+    if (!user) return;
+    
+    setAddingProduct(productId);
+    try {
+      await addToCartContext(productId, 1);
+      // Remove from featured products after adding
+      setFeaturedProducts(prev => prev.filter(p => p.id !== productId));
+    } catch (error) {
+      console.error('Error adding recommended product:', error);
+      alert('Failed to add product to cart');
+    } finally {
+      setAddingProduct(null);
+    }
+  };
 
   const { subtotal, shipping, total } = useMemo(() => {
     const subtotal = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
@@ -538,47 +578,50 @@ export default function CartPage() {
               </div>
 
               {/* Recommended Products */}
-              <div className="glass-card mt-4 sm:mt-6 hidden lg:block">
-                <div className="p-4 sm:p-6 border-b border-white/20">
-                  <h3 className="text-base sm:text-lg font-semibold">You might also like</h3>
-                </div>
-                <div className="p-4 sm:p-6">
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-3 p-3 glass-input rounded-lg">
-                      <Image
-                        src="/placeholder.svg?height=40&width=40"
-                        alt="Recommended product"
-                        width={40}
-                        height={40}
-                        className="rounded object-cover flex-shrink-0"
-                      />
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-xs sm:text-sm truncate">Lavender Essential Oil</p>
-                        <p className="text-green-600 font-semibold text-xs sm:text-sm">₹399</p>
-                      </div>
-                      <Button size="sm" className="glass-button text-xs">
-                        Add
-                      </Button>
-                    </div>
-                    <div className="flex items-center gap-3 p-3 glass-input rounded-lg">
-                      <Image
-                        src="/placeholder.svg?height=40&width=40"
-                        alt="Recommended product"
-                        width={40}
-                        height={40}
-                        className="rounded object-cover flex-shrink-0"
-                      />
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-xs sm:text-sm truncate">Aloe Vera Gel</p>
-                        <p className="text-green-600 font-semibold text-xs sm:text-sm">₹299</p>
-                      </div>
-                      <Button size="sm" className="glass-button text-xs">
-                        Add
-                      </Button>
+              {featuredProducts.length > 0 && (
+                <div className="glass-card mt-4 sm:mt-6 hidden lg:block">
+                  <div className="p-4 sm:p-6 border-b border-white/20">
+                    <h3 className="text-base sm:text-lg font-semibold">You might also like</h3>
+                  </div>
+                  <div className="p-4 sm:p-6">
+                    <div className="space-y-3">
+                      {featuredProducts.map((product) => (
+                        <div key={product.id} className="flex items-center gap-3 p-3 glass-input rounded-lg">
+                          <Link href={`/products/${product.id}`}>
+                            <Image
+                              src={product.image_url || product.image || "/placeholder.svg"}
+                              alt={product.name}
+                              width={40}
+                              height={40}
+                              className="rounded object-cover flex-shrink-0 cursor-pointer hover:opacity-80 transition-opacity"
+                            />
+                          </Link>
+                          <div className="flex-1 min-w-0">
+                            <Link href={`/products/${product.id}`}>
+                              <p className="font-medium text-xs sm:text-sm truncate hover:text-green-600 cursor-pointer">
+                                {product.name}
+                              </p>
+                            </Link>
+                            <p className="text-green-600 font-semibold text-xs sm:text-sm">₹{product.price}</p>
+                          </div>
+                          <Button 
+                            size="sm" 
+                            className="glass-button text-xs"
+                            onClick={() => addRecommendedProduct(product.id)}
+                            disabled={addingProduct === product.id}
+                          >
+                            {addingProduct === product.id ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              'Add'
+                            )}
+                          </Button>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 </div>
-              </div>
+              )}
             </div>
           </div>
         )}
