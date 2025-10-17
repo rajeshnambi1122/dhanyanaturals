@@ -9,6 +9,7 @@ interface AuthContextType {
   loading: boolean;
   signOut: () => Promise<void>;
   refreshUser: () => Promise<void>;
+  getSessionToken: () => Promise<string | null>; // ✅ SECURITY: Method to get auth token
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -100,8 +101,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // ✅ SECURITY: Get the current session token for API calls
+  const getSessionToken = async (): Promise<string | null> => {
+    try {
+      const { data } = await supabase.auth.getSession();
+      return data.session?.access_token || null;
+    } catch (error) {
+      console.error('Error getting session token:', error);
+      return null;
+    }
+  };
+
   return (
-    <AuthContext.Provider value={{ user, isLoggedIn, isAdmin, loading, signOut, refreshUser }}>
+    <AuthContext.Provider value={{ user, isLoggedIn, isAdmin, loading, signOut, refreshUser, getSessionToken }}>
       {children}
     </AuthContext.Provider>
   );

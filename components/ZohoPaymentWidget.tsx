@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { initializeZohoPaymentWidget } from '@/lib/zoho-auth-client';
+import { supabase } from '@/lib/supabase';
 
 interface ZohoPaymentWidgetProps {
   amount: number;
@@ -16,6 +17,9 @@ interface ZohoPaymentWidgetProps {
   onSuccess: (paymentData: any) => void;
   onError: (error: any) => void;
   onClose: () => void;
+  authToken?: string; // ✅ SECURITY: Authentication token
+  cartItems?: Array<{ product_id: number; quantity: number }>; // ✅ SECURITY: For server-side verification
+  shippingCharge?: number; // ✅ SECURITY: For server-side verification
 }
 
 declare global {
@@ -32,11 +36,17 @@ export default function ZohoPaymentWidget({
   orderId,
   onSuccess,
   onError,
-  onClose
+  onClose,
+  authToken,
+  cartItems,
+  shippingCharge
 }: ZohoPaymentWidgetProps) {
+  console.log('🔄 ZohoPaymentWidget component rendered/re-rendered for orderId:', orderId);
+  
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const instanceRef = useRef<any>(null);
+  const isInitializedRef = useRef(false); // Track if widget has been initialized
   
   // Check if payment was already completed (from localStorage)
   useEffect(() => {
@@ -51,10 +61,20 @@ export default function ZohoPaymentWidget({
         return;
       }
     }
-  }, [onClose]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Run only once on mount
 
   useEffect(() => {
     const initializeWidget = async () => {
+      // Prevent multiple initializations
+      if (isInitializedRef.current) {
+        console.log('⚠️ Widget already initialized, skipping...');
+        return;
+      }
+      
+      console.log('🎯 Initializing ZohoPaymentWidget for orderId:', orderId);
+      isInitializedRef.current = true;
+      
       try {
         // Wait for Zoho Payments script to load
         let retries = 0;
@@ -67,13 +87,23 @@ export default function ZohoPaymentWidget({
           throw new Error('Zoho Payments script failed to load');
         }
 
+        // ✅ SECURITY: Get the current session token
+        let token = authToken;
+        if (!token) {
+          const { data } = await supabase.auth.getSession();
+          token = data.session?.access_token || undefined;
+        }
+
         // Use our centralized helper to create a payment session
         const sessionResult = await initializeZohoPaymentWidget(
           amount,
           currency,
           description,
           orderId,
-          customerDetails
+          customerDetails,
+          token, // ✅ SECURITY: Pass authentication token
+          cartItems, // ✅ SECURITY: Pass cart items for server-side verification
+          shippingCharge // ✅ SECURITY: Pass shipping charge for server-side verification
         );
 
         if (!sessionResult.success) {
@@ -142,6 +172,9 @@ export default function ZohoPaymentWidget({
       } catch (err: any) {
         console.error('Payment widget error:', err);
         
+        // Reset initialization flag on error so it can be retried
+        isInitializedRef.current = false;
+        
         // Check if this is a widget closure vs actual error
         if (err.message?.toLowerCase().includes('cancelled') || 
             err.message?.toLowerCase().includes('closed') ||
@@ -158,7 +191,8 @@ export default function ZohoPaymentWidget({
     };
 
     initializeWidget();
-  }, [amount, currency, description, customerDetails, orderId, onSuccess, onError]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [amount, currency, description, orderId]); // Removed callback dependencies to prevent re-renders
 
   // Cleanup on unmount
   useEffect(() => {

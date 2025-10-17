@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useCallback, useMemo, Suspense } from "react";
+import { useEffect, useState, useMemo, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { userDataService, productService, orderService } from "@/lib/supabase";
@@ -38,7 +38,7 @@ function CheckoutPageContent() {
   const [orderSuccess, setOrderSuccess] = useState(false);
   const [orderId, setOrderId] = useState<string | null>(null);
   const [isBuyNow, setIsBuyNow] = useState(false);
-  const { user, loading: authLoading, refreshUser } = useAuth();
+  const { user, loading: authLoading, refreshUser, getSessionToken } = useAuth();
   const router = useRouter();
 
   // Check if this is a Buy Now checkout
@@ -74,6 +74,9 @@ function CheckoutPageContent() {
     }
     return false;
   });
+  
+  // Generate payment reference ID once and reuse it to prevent re-renders
+  const [paymentOrderId] = useState(() => `ORDER_${Date.now()}`);
 
   // Check for completed payment on page load
   useEffect(() => {
@@ -306,36 +309,16 @@ function CheckoutPageContent() {
       return;
     }
 
+    console.log('💳 handleOnlinePayment called - showing payment widget');
     setProcessingPayment(true);
+    
     try {
       // Check if Zoho Payments is properly configured
       if (!process.env.NEXT_PUBLIC_ZOHO_ACCOUNT_ID || !process.env.NEXT_PUBLIC_ZOHO_API_KEY) {
         throw new Error('Payment gateway not configured. Please contact support.');
       }
 
-      // Create payment session directly (this should use API keys, not OAuth)
-      const sessionResponse = await fetch('/api/payments/session', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          amount: total.toString(),
-          currency_code: 'INR',
-          description: `Order payment for Dhanya Naturals - Order #ORDER_${Date.now()}`,
-          reference_number: `ORDER_${Date.now()}`,
-          address: {
-            name: customerDetails.name,
-            email: customerDetails.email,
-            phone: customerDetails.phone
-          }
-        })
-      });
-
-      if (!sessionResponse.ok) {
-        const errorData = await sessionResponse.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Failed to create payment session');
-      }
-
-      // If session creation is successful, show the payment widget
+      // Just show the payment widget - it will create the session internally
       setShowPaymentWidget(true);
       setProcessingPayment(false);
       
@@ -377,10 +360,16 @@ function CheckoutPageContent() {
     }
     
     try {
+      // ✅ SECURITY: Get session token for authentication
+      const token = await getSessionToken();
+      
       // Verify payment with backend first
       const verifyResponse = await fetch('/api/payments/verify', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(token && { 'Authorization': `Bearer ${token}` }) // ✅ SECURITY: Include auth token
+        },
         body: JSON.stringify({ 
           payment_id: paymentData.payment_id,
           payments_session_id: paymentData.payments_session_id 
@@ -745,7 +734,7 @@ function CheckoutPageContent() {
                 </div>
                 <div>
                   <p className="text-sm text-gray-600 mb-1">Delivery Address</p>
-                  <p className="font-semibold text-gray-800 text-sm">{shippingAddress.city}, {shippingAddress.state}</p>
+                  <p className="font-semibold text-gray-800 text-sm">{shippingAddress.street}, {shippingAddress.city}, {shippingAddress.state}</p>
                 </div>
               </div>
             </div>
@@ -784,7 +773,6 @@ function CheckoutPageContent() {
                 <li>• We'll prepare your order within 1-2 business days</li>
                 <li>• You'll receive tracking information via email</li>
                 <li>• Expected delivery: 3-5 business days</li>
-                <li>• Payment will be collected upon delivery</li>
               </ul>
             </div>
 
@@ -1231,12 +1219,18 @@ function CheckoutPageContent() {
         <ZohoPaymentWidget
           amount={total}
           currency="INR"
-          description={`Order payment for Dhanya Naturals - Order #ORDER_${Date.now()}`}
+          description={`Order payment for Dhanya Naturals - ${paymentOrderId}`}
           customerDetails={customerDetails}
-          orderId={`ORDER_${Date.now()}`}
+          orderId={paymentOrderId}
           onSuccess={handlePaymentSuccess}
           onError={handlePaymentError}
           onClose={() => setShowPaymentWidget(false)}
+          authToken={undefined} // Will be fetched by widget when needed
+          cartItems={cartItems.map(item => ({ 
+            product_id: item.product_id, 
+            quantity: item.quantity 
+          }))} // ✅ SECURITY: Pass cart items for server-side verification
+          shippingCharge={shipping} // ✅ SECURITY: Pass shipping for server-side verification
         />
       )}
     </div>

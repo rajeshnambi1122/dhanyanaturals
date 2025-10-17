@@ -416,7 +416,7 @@ export async function verifyPayment(
     
     // Default to success if we have payment data but status is unclear
     // This is a temporary fix for testing - you may want to adjust this for production
-    const forceSuccess = true; // Set to false in production if you want stricter verification
+    const forceSuccess = false; // Set to false in production if you want stricter verification
 
     // For testing: if forceSuccess is true, treat all non-failed payments as successful
     const finalIsSuccess = isSuccess || (forceSuccess && !isFailed);

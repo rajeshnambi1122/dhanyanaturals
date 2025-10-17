@@ -36,7 +36,10 @@ export async function initializeZohoPaymentWidget(
     name: string;
     email: string;
     phone: string;
-  }
+  },
+  authToken?: string,
+  cartItems?: Array<{ product_id: number; quantity: number }>,
+  shippingCharge?: number
 ): Promise<{
   success: boolean;
   payments_session_id?: string;
@@ -44,10 +47,19 @@ export async function initializeZohoPaymentWidget(
   authUrl?: string;
 }> {
   try {
+    // ✅ SECURITY: Include authentication token in request
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json'
+    };
+    
+    if (authToken) {
+      headers['Authorization'] = `Bearer ${authToken}`;
+    }
+
     // Create payment session first
     const sessionResponse = await fetch('/api/payments/session', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({
         amount: amount.toString(),
         currency,
@@ -57,7 +69,9 @@ export async function initializeZohoPaymentWidget(
           name: customerDetails.name,
           email: customerDetails.email,
           phone: customerDetails.phone
-        }
+        },
+        cart_items: cartItems, // ✅ SECURITY: Send cart items for server-side verification
+        shipping_charge: shippingCharge
       })
     });
 

@@ -61,7 +61,7 @@ export function buildOrderEmailHtml(params: {
       
       <div style="margin-top:32px;padding-top:24px;border-top:2px solid #e0f2e9">
         <p style="margin:0 0 8px;color:#555;font-size:14px">Thank you for choosing Dhanya Naturals! 🌿</p>
-        <p style="margin:0;color:#777;font-size:13px">For any questions, contact us at <a href="mailto:dhanyanaturals01@gmail.com" style="color:#0a7e3a;text-decoration:none">dhanyanaturals1@gmail.com</a></p>
+        <p style="margin:0;color:#777;font-size:13px">For any questions, contact us at <a href="mailto:dhanyanaturals01@gmail.com" style="color:#0a7e3a;text-decoration:none">dhanyanaturals01@gmail.com</a></p>
       </div>
     </div>
     
