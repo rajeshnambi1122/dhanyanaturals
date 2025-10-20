@@ -434,14 +434,13 @@ export const orderService = {
           quantity: item.quantity,
         })
         
+        // If RPC fails (function doesn't exist or other error), use fallback
         if (rpcError) {
-          console.warn("RPC decrement_stock failed, using direct update:", rpcError)
-          // Fallback to direct update if RPC function doesn't exist
-          await this.decrementStockDirect(item.product_id, item.quantity)
+          throw rpcError; // Throw to trigger catch block
         }
       } catch (error) {
-        console.warn("Error with decrement_stock RPC, using fallback:", error)
-        // Fallback to direct update
+        // Fallback to direct update for any RPC failure
+        console.warn("RPC decrement_stock failed, using direct update:", error)
         await this.decrementStockDirect(item.product_id, item.quantity)
       }
     }

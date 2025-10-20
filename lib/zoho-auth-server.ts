@@ -1,8 +1,8 @@
 import { cookies } from 'next/headers';
+import { getZohoAuthUrl } from './zoho-auth-client';
 
 // Zoho API constants
 const ZOHO_TOKEN_URL = 'https://accounts.zoho.in/oauth/v2/token';
-const ZOHO_AUTH_URL = 'https://accounts.zoho.in/oauth/v2/auth';
 const ZOHO_API_BASE = 'https://payments.zoho.in/api/v1';
 const ZOHO_ACCOUNT_ID = process.env.ZOHO_ACCOUNT_ID;
 
@@ -12,24 +12,8 @@ export interface ZohoTokens {
   expires_in?: number;
 }
 
-/**
- * Get the authorization URL for Zoho OAuth
- */
-export function getZohoAuthUrl(): string {
-  // Get the base URL with fallback
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-  
-  const params = new URLSearchParams({
-    response_type: 'code',
-    client_id: process.env.ZOHO_CLIENT_ID!,
-    scope: 'ZohoPay.payments.CREATE,ZohoPay.payments.READ,ZohoPay.payments.UPDATE',
-    redirect_uri: `${baseUrl}/api/auth/zoho/callback`,
-    access_type: 'offline', // To get refresh token
-    prompt: 'consent', // Force consent to get refresh token
-  });
-  
-  return `${ZOHO_AUTH_URL}?${params.toString()}`;
-}
+// Re-export getZohoAuthUrl from client (it doesn't need server-side features)
+export { getZohoAuthUrl };
 
 /**
  * Get access token from cookies or environment variable, with automatic refresh

@@ -48,24 +48,21 @@ export default function ZohoPaymentWidget({
   const instanceRef = useRef<any>(null);
   const isInitializedRef = useRef(false); // Track if widget has been initialized
   
-  // Check if payment was already completed (from localStorage)
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const paymentCompleted = localStorage.getItem('payment_completed') === 'true';
-      const paymentId = localStorage.getItem('payment_id');
-      
-      if (paymentCompleted && paymentId) {
-        console.log('Payment already completed, closing widget');
-        // Don't re-trigger onSuccess - just close the widget
-        onClose();
-        return;
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Run only once on mount
-
+  // Initialize widget and check payment completion
   useEffect(() => {
     const initializeWidget = async () => {
+      // Check if payment was already completed (from localStorage)
+      if (typeof window !== 'undefined') {
+        const paymentCompleted = localStorage.getItem('payment_completed') === 'true';
+        const paymentId = localStorage.getItem('payment_id');
+        
+        if (paymentCompleted && paymentId) {
+          console.log('Payment already completed, closing widget');
+          onClose();
+          return;
+        }
+      }
+
       // Prevent multiple initializations
       if (isInitializedRef.current) {
         console.log('⚠️ Widget already initialized, skipping...');

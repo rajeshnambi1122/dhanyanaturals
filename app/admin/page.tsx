@@ -10,8 +10,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Plus, Edit, Trash2, Package, ShoppingCart, TrendingUp, AlertTriangle, Upload, X, Phone, MapPin, CreditCard, Truck, FileText, Clock, Calendar, DollarSign, UserCircle, Mail, Image as ImageIcon, Tag, Star } from "lucide-react"
 import { productService, orderService, authService, storageService, type Product, type Order, type UserData } from "@/lib/supabase"
+import { useAuth } from "@/contexts/AuthContext"
 
 export default function AdminDashboard() {
+  const { getSessionToken } = useAuth()
   const [products, setProducts] = useState<Product[]>([])
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
@@ -45,6 +47,7 @@ export default function AdminDashboard() {
   const [editingOrder, setEditingOrder] = useState<Order | null>(null)
   const [isEditStatusOpen, setIsEditStatusOpen] = useState(false)
   const [updatingOrderStatus, setUpdatingOrderStatus] = useState(false)
+  const [updatingToStatus, setUpdatingToStatus] = useState<string | null>(null)
 
   useEffect(() => {
     checkAuth()
@@ -75,6 +78,7 @@ export default function AdminDashboard() {
 
   const handleUpdateOrderStatus = async (orderId: number, newStatus: string) => {
     setUpdatingOrderStatus(true)
+    setUpdatingToStatus(newStatus)
     try {
       const updated = await orderService.updateOrderStatus(orderId, { status: newStatus as Order["status"] })
       
@@ -84,19 +88,25 @@ export default function AdminDashboard() {
       
       // Fire and forget: notify customer via email
       try {
-        fetch('/api/email/status', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            to: updated?.customer_email,
-            orderId,
-            newStatus,
-            items: updated?.items,
-            total: updated?.total_amount,
-            customerName: updated?.customer_name,
-            trackingNumber: updated?.tracking_number,
-          }),
-        })
+        const token = await getSessionToken()
+        if (token) {
+          fetch('/api/email/status', {
+            method: 'POST',
+            headers: { 
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}` // ✅ SECURITY: Include auth token
+            },
+            body: JSON.stringify({
+              to: updated?.customer_email,
+              orderId,
+              newStatus,
+              items: updated?.items,
+              total: updated?.total_amount,
+              customerName: updated?.customer_name,
+              trackingNumber: updated?.tracking_number,
+            }),
+          })
+        }
       } catch {}
 
       // Close dialog
@@ -141,6 +151,7 @@ export default function AdminDashboard() {
       }, 3000)
     } finally {
       setUpdatingOrderStatus(false)
+      setUpdatingToStatus(null)
     }
   }
 
@@ -1243,7 +1254,7 @@ export default function AdminDashboard() {
                           {editingOrder.status === status.value && (
                             <span className="text-xs bg-green-600 text-white px-2 py-1 rounded">Current</span>
                           )}
-                          {updatingOrderStatus && (
+                          {updatingOrderStatus && updatingToStatus === status.value && (
                             <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-gray-600"></div>
                           )}
                         </div>

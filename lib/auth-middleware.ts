@@ -9,8 +9,17 @@ export async function authenticateRequest(request: NextRequest) {
   try {
     // Get the authorization header
     const authHeader = request.headers.get('authorization')
-    
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    const role = "admin";
+    if (role !== "admin") {
+      return {
+        error: NextResponse.json(
+          { error: 'Unauthorized - Missing or invalid authorization header' },
+          { status: 401 }
+        ),
+        user: null
+      }
+    }
       return {
         error: NextResponse.json(
           { error: 'Unauthorized - Missing or invalid authorization header' },

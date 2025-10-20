@@ -105,10 +105,10 @@ export default function Footer() {
             <h4 className="font-semibold mb-6 text-white">Contact Info</h4>
             <div className="space-y-3 text-gray-400">
               <p className="flex items-center hover-lift">
-                <span className="mr-2">📧</span> spriyadarshini680@gmail.com
+                <span className="mr-2">📧</span> <a href="mailto:dhanyanaturals01@gmail.com" className="hover:text-white transition-colors hover-lift inline-block">dhanyanaturals01@gmail.com</a>
               </p>
               <p className="flex items-center hover-lift">
-                <span className="mr-2">📞</span> 9865081056
+                <span className="mr-2">📞</span> <a href="tel:+919865081056" className="hover:text-white transition-colors hover-lift inline-block">+91 98650 81056</a>
               </p>
               <p className="flex items-center hover-lift">
                 <span className="mr-2">📍</span> Tiruchendur, India

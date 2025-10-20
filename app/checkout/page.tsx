@@ -439,17 +439,23 @@ function CheckoutPageContent() {
         
         // Fire and forget: send order placed email
         try {
-          await fetch('/api/email/placed', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              to: customerDetails.email,
-              orderId: newOrder.id,
-              customerName: customerDetails.name,
-              total: total,
-              items: cartItems
-            }),
-          });
+          const token = await getSessionToken();
+          if (token) {
+            await fetch('/api/email/placed', {
+              method: 'POST',
+              headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}` // ✅ SECURITY: Include auth token
+              },
+              body: JSON.stringify({
+                to: customerDetails.email,
+                orderId: newOrder.id,
+                customerName: customerDetails.name,
+                total: total,
+                items: cartItems
+              }),
+            });
+          }
         } catch (emailError) {
           console.error('Failed to send order email:', emailError);
         }
@@ -654,17 +660,23 @@ function CheckoutPageContent() {
       setOrderSuccess(true);
       // Fire and forget: send order placed email
       try {
-        fetch('/api/email/placed', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            to: customerDetails.email,
-            orderId: newOrder.id,
-            items: orderData.items,
-            total: orderData.total_amount,
-            customerName: customerDetails.name,
-          }),
-        });
+        const token = await getSessionToken();
+        if (token) {
+          fetch('/api/email/placed', {
+            method: 'POST',
+            headers: { 
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}` // ✅ SECURITY: Include auth token
+            },
+            body: JSON.stringify({
+              to: customerDetails.email,
+              orderId: newOrder.id,
+              items: orderData.items,
+              total: orderData.total_amount,
+              customerName: customerDetails.name,
+            }),
+          });
+        }
       } catch {}
       
       // Scroll to top on mobile to show success message

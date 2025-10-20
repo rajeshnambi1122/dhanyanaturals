@@ -1,11 +1,24 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { Resend } from "resend"
 import { buildOrderEmailHtml } from "@/lib/utils"
+import { authenticateRequest } from "@/lib/auth-middleware"
+import { authService } from "@/lib/supabase"
 
 const resend = new Resend(process.env.RESEND_API_KEY || "")
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
+    // ✅ SECURITY: Authenticate the user
+    const { error: authError, user } = await authenticateRequest(request)
+    if (authError || !user) {
+      return authError || NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 })
+    }
+
+    // ✅ SECURITY: Check admin role
+    const userProfile = await authService.getUserProfile(user.id)
+    if (!userProfile || userProfile.role !== "admin") {
+      return NextResponse.json({ ok: false, error: "Forbidden - Admin access required" }, { status: 403 })
+    }
     const body = await request.json()
     const { to, orderId, newStatus, items = [], total, customerName, trackingNumber } = body || {}
 
@@ -37,7 +50,8 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ ok: true })
   } catch (error: any) {
-    return NextResponse.json({ ok: false, error: error?.message || "Failed to send" }, { status: 500 })
+    console.error('Email sending error:', error)
+    return NextResponse.json({ ok: false, error: error?.message || "Failed to send email" }, { status: 500 })
   }
 }
 

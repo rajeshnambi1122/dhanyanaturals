@@ -518,7 +518,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
         </div>
 
         {/* Back Button */}
-        <div className="mb-8">
+        <div className="mb-4">
           <Link href="/products">
             <Button variant="outline" size="sm" className="glass-input bg-transparent">
               <ArrowLeft className="h-4 w-4 mr-2" />
@@ -528,9 +528,9 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
         </div>
 
         {/* Mobile centered layout, desktop grid */}
-        <div className="flex flex-col lg:grid lg:grid-cols-2 gap-8 lg:gap-12 items-center lg:items-start">
+        <div className="flex flex-col lg:grid lg:grid-cols-5 gap-8 lg:gap-12 items-center lg:items-start">
           {/* Product Image Section */}
-          <div className="space-y-2 w-full max-w-lg lg:max-w-none">
+          <div className="space-y-2 w-full max-w-lg lg:max-w-xl lg:col-span-2">
             <div className="glass-card p-2">
               <div className="aspect-square relative overflow-hidden rounded-xl">
                 <Image
@@ -538,7 +538,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
                   alt={product.name}
                   fill
                   className="object-cover"
-                  sizes="(max-width: 768px) 100vw, 50vw"
+                  sizes="(max-width: 768px) 100vw, 40vw"
                 />
               </div>
             </div>
@@ -568,7 +568,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
           </div>
 
           {/* Product Details */}
-          <div className="space-y-6 w-full max-w-lg lg:max-w-none">
+          <div className="space-y-6 w-full max-w-lg lg:max-w-none lg:col-span-3">
             <div>
               <div className="flex items-center gap-2 mb-2">
                 <Badge className="glass-badge bg-green-500">{product.category.replace("-", " ").toUpperCase()}</Badge>
@@ -708,7 +708,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
                   <Truck className="h-5 w-5 text-green-600" />
                   <div>
                     <p className="font-medium text-sm">Free Shipping</p>
-                    <p className="text-xs text-gray-500">On orders over ₹500</p>
+                    <p className="text-xs text-gray-500">On orders over ₹1000</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
