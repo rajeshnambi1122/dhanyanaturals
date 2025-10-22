@@ -6,16 +6,35 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 // Create the Supabase client
 export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
-// Simple retry function for cold starts
-export async function withRetry<T>(fn: () => Promise<T>, retries = 1): Promise<T> {
+// Enhanced retry function with timeout for cold starts
+export async function withRetry<T>(fn: () => Promise<T>, retries = 2, timeoutMs = 3000): Promise<T> {
   try {
-    return await fn();
+    // Create a timeout promise
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => {
+        reject(new Error(`Request timeout after ${timeoutMs}ms`));
+      }, timeoutMs);
+    });
+
+    // Race between the actual request and timeout
+    const result = await Promise.race([
+      fn(),
+      timeoutPromise
+    ]);
+
+    return result;
   } catch (error) {
-    if (retries <= 0) throw error;
+    if (retries <= 0) {
+      console.error('All retry attempts exhausted:', error);
+      throw error;
+    }
     
-    console.log(`Request failed, retrying in 3 seconds... (${retries} attempts left)`);
-    await new Promise(resolve => setTimeout(resolve, 3000));
-    return withRetry(fn, retries - 1);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.log(`Request failed (${errorMessage}), retrying... (${retries} attempts left)`);
+    
+    // Wait 1 second before retrying
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    return withRetry(fn, retries - 1, timeoutMs);
   }
 }
 
@@ -170,19 +189,21 @@ export const productService = {
       }
   
       return data || []
-    }, 1); // Retry once after 3 seconds
+    }, 2, 3000); // Retry 2 times with 3 second timeout
   },
 
   // Get single product by ID
   async getProductById(id: number) {
-    const { data, error } = await supabase.from("products").select("*").eq("id", id).single()
+    return withRetry(async () => {
+      const { data, error } = await supabase.from("products").select("*").eq("id", id).single()
 
-    if (error) {
-      console.error("Error fetching product:", error)
-      return null
-    }
+      if (error) {
+        console.error("Error fetching product:", error)
+        throw error; // Throw error to trigger retry
+      }
 
-    return data
+      return data
+    }, 2, 3000); // Retry 2 times with 3 second timeout
   },
 
   // Create new product
@@ -298,7 +319,7 @@ export const productService = {
       }
   
       return data || []
-    }, 1); // Retry once after 3 seconds
+    }, 2, 3000); // Retry 2 times with 3 second timeout
   },
 }
 
@@ -309,30 +330,34 @@ export const orderService = {
   
   // Get all orders
   async getOrders() {
-    const { data, error } = await supabase.from("orders").select("*").order("created_at", { ascending: false })
+    return withRetry(async () => {
+      const { data, error } = await supabase.from("orders").select("*").order("created_at", { ascending: false })
 
-    if (error) {
-      console.error("Error fetching orders:", error)
-      return []
-    }
+      if (error) {
+        console.error("Error fetching orders:", error)
+        throw error; // Throw error to trigger retry
+      }
 
-    return data || []
+      return data || []
+    }, 2, 3000); // Retry 2 times with 3 second timeout
   },
 
   // Get orders by customer email
   async getOrdersByCustomer(email: string) {
-    const { data, error } = await supabase
-      .from("orders")
-      .select("*")
-      .eq("customer_email", email)
-      .order("created_at", { ascending: false })
+    return withRetry(async () => {
+      const { data, error } = await supabase
+        .from("orders")
+        .select("*")
+        .eq("customer_email", email)
+        .order("created_at", { ascending: false })
 
-    if (error) {
-      console.error("Error fetching customer orders:", error)
-      return []
-    }
+      if (error) {
+        console.error("Error fetching customer orders:", error)
+        throw error; // Throw error to trigger retry
+      }
 
-    return data || []
+      return data || []
+    }, 2, 3000); // Retry 2 times with 3 second timeout
   },
 
   // 🔒 SECURITY: Validate order prices against database prices
