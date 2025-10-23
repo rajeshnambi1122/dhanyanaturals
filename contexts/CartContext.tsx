@@ -21,6 +21,7 @@ const CartContext = createContext<CartContextType | undefined>(undefined);
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [initialized, setInitialized] = useState(false);
   const { user, loading: authLoading, refreshUser } = useAuth();
 
   const refreshCart = async () => {
@@ -161,14 +162,21 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             const prevCartStr = JSON.stringify(prevItems);
             return newCartStr !== prevCartStr ? (user.cart_items || []) : prevItems;
           });
-        } else {
+          if (!initialized) setInitialized(true);
+        } else if (!user && initialized) {
+          // Only clear cart if:
+          // 1. User is definitely not logged in (!user)
+          // 2. We've already initialized (to prevent clearing before first load)
           setCartItems([]);
+        } else if (!user && !initialized) {
+          // First load with no user - mark as initialized with empty cart
+          setInitialized(true);
         }
       }
     }, 100); // Small delay to batch updates
 
     return () => clearTimeout(timeoutId);
-  }, [user?.cart_items, authLoading]); // Only depend on cart_items, not entire user object
+  }, [user?.cart_items, authLoading, user, initialized]); // Depend on user object to detect logout
 
   const value = {
     cartItems,

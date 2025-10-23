@@ -147,7 +147,9 @@ export const productService = {
       }
   
       if (filters?.search) {
-        query = query.or(`name.ilike.%${filters.search}%,description.ilike.%${filters.search}%`)
+        console.log('[ProductService] Applying search filter:', filters.search);
+        const searchPattern = `%${filters.search}%`;
+        query = query.or(`name.ilike.${searchPattern},description.ilike.${searchPattern}`)
       }
   
       if (filters?.inStockOnly) {
@@ -188,8 +190,9 @@ export const productService = {
         throw error; // Throw error to trigger retry
       }
   
+      console.log('[ProductService] Query returned', data?.length || 0, 'products');
       return data || []
-    }, 3, 15000); // Retry 3 times with 15 second timeout
+    }, 2, 30000); // Retry 2 times with 30 second timeout (total 60s max)
   },
 
   // Get single product by ID
@@ -363,7 +366,7 @@ export const orderService = {
   // 🔒 SECURITY: Validate order prices against database prices
   async validateOrderPrices(order: Omit<Order, "id" | "created_at" | "updated_at">) {
     // 🧪 TESTING MODE: Skip price validation (REMOVE IN PRODUCTION!)
-    const SKIP_PRICE_VALIDATION = true; // ⚠️ Set to false in production!
+    const SKIP_PRICE_VALIDATION = false; // ⚠️ Set to false in production!
     
     if (SKIP_PRICE_VALIDATION) {
       console.warn('⚠️ TESTING MODE: Price validation is disabled!');

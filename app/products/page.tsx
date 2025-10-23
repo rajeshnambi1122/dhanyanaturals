@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useEffect } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -28,58 +28,75 @@ export default function ProductsPage() {
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [searchTerm, setSearchTerm] = useState("")
+  const [searchInput, setSearchInput] = useState("") // What user types
+  const [searchTerm, setSearchTerm] = useState("") // Actual search filter
   const [selectedCategory, setSelectedCategory] = useState("all")
   const [sortBy, setSortBy] = useState("name")
   const [showInStockOnly, setShowInStockOnly] = useState(false)
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid")
   const [showFilters, setShowFilters] = useState(false)
   const [prefetchedProducts, setPrefetchedProducts] = useState<Set<number>>(new Set())
-  const loadingRef = useRef(false)
+  const [refreshTrigger, setRefreshTrigger] = useState(0) // Trigger for manual refresh
 
-  const loadProducts = useCallback(async () => {
-    // Prevent duplicate calls
-    if (loadingRef.current) {
-      console.log('[Products] Already loading, skipping...');
-      return;
-    }
-    
-    console.log('[Products] Loading products with filters:', {
-      category: selectedCategory,
-      search: searchTerm,
-      inStockOnly: showInStockOnly,
-      sortBy: sortBy
-    });
-    
-    loadingRef.current = true;
-    setLoading(true)
-    setError(null)
-    
-    try {
-      const filters = {
-        category: selectedCategory,
-        search: searchTerm,
-        inStockOnly: showInStockOnly,
-        sortBy: sortBy,
-      }
-      const data = await productService.getProducts(filters)
-      console.log('[Products] Loaded products:', data?.length || 0);
-      setProducts(data || [])
-    } catch (error) {
-      console.error("[Products] Error loading products:", error)
-      const errorMessage = error instanceof Error ? error.message : 'Failed to load products';
-      setError(errorMessage)
-      setProducts([]) // Set empty array on error
-    } finally {
-      setLoading(false)
-      loadingRef.current = false;
-    }
-  }, [selectedCategory, searchTerm, sortBy, showInStockOnly])
+  // Handle search button click
+  const handleSearch = () => {
+    console.log('[Search] Searching for:', searchInput);
+    setSearchTerm(searchInput);
+  };
 
+  // Handle Enter key in search input
+  const handleSearchKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      handleSearch();
+    }
+  };
+
+  // Load products whenever filters change or refresh is triggered
   useEffect(() => {
-    console.log('[Products] useEffect triggered, calling loadProducts');
-    loadProducts()
-  }, [loadProducts])
+    let cancelled = false;
+    
+    const loadProducts = async () => {
+      try {
+        console.log('[Products] Loading products...');
+        
+        setLoading(true)
+        setError(null)
+        
+        const filters = {
+          category: selectedCategory,
+          search: searchTerm,
+          inStockOnly: showInStockOnly,
+          sortBy: sortBy,
+        }
+        
+        console.log('[Products] Applying filters:', filters);
+        
+        const data = await productService.getProducts(filters)
+        
+        // Only update state if this request wasn't cancelled
+        if (!cancelled) {
+          console.log('[Products] Loaded', data?.length || 0, 'products successfully');
+          setProducts(data || [])
+          setLoading(false)
+        }
+      } catch (error) {
+        console.error("[Products] Error loading products:", error)
+        if (!cancelled) {
+          const errorMessage = error instanceof Error ? error.message : 'Failed to load products';
+          setError(errorMessage)
+          setProducts([])
+          setLoading(false)
+        }
+      }
+    };
+
+    loadProducts();
+    
+    // Cleanup function to cancel the request if filters change
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCategory, searchTerm, sortBy, showInStockOnly, refreshTrigger])
 
   // Background prefetching for popular products
   useEffect(() => {
@@ -163,15 +180,31 @@ export default function ProductsPage() {
                 <Search className="h-5 w-5 mr-2 text-green-600" />
                 Search Products
               </h3>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-                <Input
-                  placeholder="Search products..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10 glass-input focus-ring"
-                />
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                  <Input
+                    placeholder="Search products..."
+                    value={searchInput}
+                    onChange={(e) => setSearchInput(e.target.value)}
+                    onKeyPress={handleSearchKeyPress}
+                    className="pl-10 glass-input focus-ring"
+                  />
+                </div>
+                <Button
+                  onClick={handleSearch}
+                  className="glass-button px-4"
+                  size="sm"
+                >
+                  <Search className="h-4 w-4" />
+                </Button>
               </div>
+              {searchTerm && (
+                <p className="text-xs text-gray-500 mt-2">
+                  Searching for: <span className="font-semibold">{searchTerm}</span>
+                  {searchInput !== searchTerm && ' (press Enter or click Search)'}
+                </p>
+              )}
             </div>
 
             {/* Categories */}
@@ -432,11 +465,12 @@ export default function ProductsPage() {
                   </p>
                   <Button
                     onClick={() => {
+                      setSearchInput("")
                       setSearchTerm("")
                       setSelectedCategory("all")
                       setShowInStockOnly(false)
                       setError(null)
-                      loadProducts()
+                      setRefreshTrigger(prev => prev + 1) // Trigger reload
                     }}
                     className="glass-button-secondary"
                   >
