@@ -1,15 +1,32 @@
 "use client";
 
 import { useEffect } from 'react';
+import { usePathname } from 'next/navigation';
 import confetti from 'canvas-confetti';
 
 export default function ConfettiWrapper() {
+  const pathname = usePathname();
+
   useEffect(() => {
+    // Only fire confetti on homepage
+    if (pathname !== '/' || typeof window === 'undefined') {
+      return;
+    }
+
+    // Check if confetti has already been shown in this session
+    const confettiShown = sessionStorage.getItem('confetti_shown');
+    if (confettiShown) {
+      return;
+    }
+
+    // Mark confetti as shown for this session
+    sessionStorage.setItem('confetti_shown', 'true');
+
     // Fire confetti after a short delay when page loads
     const timer = setTimeout(() => {
-      const duration = 300000;
+      const duration = 3000;
       const animationEnd = Date.now() + duration;
-      const defaults = { startVelocity: 30, spread: 460, ticks: 30, zIndex: 9999 };
+      const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 9999 };
 
       function randomInRange(min: number, max: number) {
         return Math.random() * (max - min) + min;
@@ -37,10 +54,11 @@ export default function ConfettiWrapper() {
         });
       }, 250);
 
+      return () => clearInterval(interval);
     }, 500);
 
     return () => clearTimeout(timer);
-  }, []);
+  }, [pathname]);
 
   return null;
 }

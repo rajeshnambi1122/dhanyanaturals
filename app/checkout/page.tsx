@@ -75,8 +75,39 @@ function CheckoutPageContent() {
     return false;
   });
   
-  // Generate payment reference ID once and reuse it to prevent re-renders
-  const [paymentOrderId] = useState(() => `ORDER_${Date.now()}`);
+  // Generate payment reference ID based on next order number
+  const [paymentOrderId, setPaymentOrderId] = useState<string>('');
+  const [orderIdGenerated, setOrderIdGenerated] = useState(false);
+
+  // Fetch latest order number and generate next order reference
+  useEffect(() => {
+    if (orderIdGenerated) return;
+
+    const generateOrderReference = async () => {
+      try {
+        // Fetch the latest order to get the highest order ID
+        const orders = await orderService.getOrders();
+        
+        let nextOrderNumber = 1001; // Default starting number
+        
+        if (orders && orders.length > 0) {
+          // Get the highest ID from existing orders
+          const maxId = Math.max(...orders.map(order => order.id || 0));
+          nextOrderNumber = maxId + 1;
+        }
+        
+        setPaymentOrderId(`#${nextOrderNumber}`);
+        setOrderIdGenerated(true);
+      } catch (error) {
+        console.error('Error generating order reference:', error);
+        // Fallback to timestamp-based ID if fetch fails
+        setPaymentOrderId(`#ORDER_${Date.now()}`);
+        setOrderIdGenerated(true);
+      }
+    };
+
+    generateOrderReference();
+  }, [orderIdGenerated]);
 
   // Check for completed payment on page load
   useEffect(() => {
@@ -890,7 +921,9 @@ function CheckoutPageContent() {
                       value={customerDetails.phone}
                       onChange={(e) => setCustomerDetails(prev => ({ ...prev, phone: e.target.value }))}
                       className="glass-input"
-                      placeholder="+91 98765 43210"
+                      placeholder="9876543210"
+                      maxLength={15}
+                      minLength={10}
                     />
                   </div>
                 </div>
@@ -1201,7 +1234,7 @@ function CheckoutPageContent() {
                   className="w-full glass-button py-3" 
                   size="lg"
                   onClick={handleSubmitOrder}
-                  disabled={submitting || processingPayment}
+                  disabled={submitting || processingPayment || !paymentOrderId}
                 >
                   {submitting ? (
                     <>
@@ -1232,7 +1265,7 @@ function CheckoutPageContent() {
         <ZohoPaymentWidget
           amount={total}
           currency="INR"
-          description={`Order payment for Dhanya Naturals - ${paymentOrderId}`}
+          description={`Dhanya Naturals - Order ${paymentOrderId}`}
           customerDetails={customerDetails}
           orderId={paymentOrderId}
           onSuccess={handlePaymentSuccess}

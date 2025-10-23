@@ -457,7 +457,7 @@ export default function CartPage() {
                           <p className="text-green-600 font-medium text-sm sm:text-base">₹{item.price}</p>
                           <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-500 mt-1">
                             {item.in_stock ? (
-                              <span className="text-green-600">✓ In Stock <span className="hidden sm:inline">({item.stock_quantity} available)</span></span>
+                              <span className="text-green-600">✓ In Stock</span>
                             ) : (
                               <span className="text-red-600">✗ Out of Stock</span>
                             )}
