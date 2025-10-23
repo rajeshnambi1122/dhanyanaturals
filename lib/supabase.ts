@@ -3,25 +3,38 @@ import { createClient } from "@supabase/supabase-js"
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
+// Debug: Check environment variables
+if (!supabaseUrl || !supabaseAnonKey) {
+  console.error('[Supabase] Missing environment variables!', { 
+    hasUrl: !!supabaseUrl, 
+    hasKey: !!supabaseAnonKey 
+  });
+}
+
 // Create the Supabase client
 export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+console.log('[Supabase] Client initialized:', { url: supabaseUrl?.substring(0, 30) + '...' });
 
 // Enhanced retry function with timeout for cold starts
 export async function withRetry<T>(fn: () => Promise<T>, retries = 2, timeoutMs = 3000): Promise<T> {
+  console.log(`[withRetry] Starting request with ${retries} retries, ${timeoutMs}ms timeout`);
   try {
     // Create a timeout promise
     const timeoutPromise = new Promise<never>((_, reject) => {
       setTimeout(() => {
+        console.error(`[withRetry] TIMEOUT after ${timeoutMs}ms`);
         reject(new Error(`Request timeout after ${timeoutMs}ms`));
       }, timeoutMs);
     });
 
+    console.log('[withRetry] Executing function...');
     // Race between the actual request and timeout
     const result = await Promise.race([
       fn(),
       timeoutPromise
     ]);
 
+    console.log('[withRetry] Request successful!');
     return result;
   } catch (error) {
     if (retries <= 0) {
@@ -139,7 +152,9 @@ export const productService = {
     sortBy?: string
     featured?: boolean
   }) {
+    console.log('[ProductService.getProducts] Function called with filters:', filters);
     return withRetry(async () => {
+      console.log('[ProductService.getProducts] Inside withRetry, building query...');
       let query = supabase.from("products").select("*")
   
       if (filters?.category && filters.category !== "all") {
@@ -147,7 +162,6 @@ export const productService = {
       }
   
       if (filters?.search) {
-        console.log('[ProductService] Applying search filter:', filters.search);
         const searchPattern = `%${filters.search}%`;
         query = query.or(`name.ilike.${searchPattern},description.ilike.${searchPattern}`)
       }
@@ -192,7 +206,7 @@ export const productService = {
   
       console.log('[ProductService] Query returned', data?.length || 0, 'products');
       return data || []
-    }, 2, 30000); // Retry 2 times with 30 second timeout (total 60s max)
+    }, 0, 60000); // No retries, 60 second timeout
   },
 
   // Get single product by ID

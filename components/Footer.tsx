@@ -28,9 +28,9 @@ export default function Footer() {
             <h4 className="font-semibold mb-6 text-white">Quick Links</h4>
             <ul className="space-y-3 text-gray-400">
               <li>
-                <Link href="/products" className="hover:text-white transition-colors hover-lift inline-block">
+                <a href="/products" className="hover:text-white transition-colors hover-lift inline-block">
                   Products
-                </Link>
+                </a>
               </li>
               <li>
                 <Link href="/about" className="hover:text-white transition-colors hover-lift inline-block">

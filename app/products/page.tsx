@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import Image from "next/image"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { useRouter, usePathname } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -25,6 +25,7 @@ const categories = [
 
 export default function ProductsPage() {
   const router = useRouter()
+  const pathname = usePathname()
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -37,6 +38,10 @@ export default function ProductsPage() {
   const [showFilters, setShowFilters] = useState(false)
   const [prefetchedProducts, setPrefetchedProducts] = useState<Set<number>>(new Set())
   const [refreshTrigger, setRefreshTrigger] = useState(0) // Trigger for manual refresh
+  const [initialLoadDone, setInitialLoadDone] = useState(false)
+
+  // Debug: Log component render
+  console.log('[ProductsPage] Component rendered, pathname:', pathname, 'products count:', products.length, 'loading:', loading)
 
   // Handle search button click
   const handleSearch = () => {
@@ -51,52 +56,126 @@ export default function ProductsPage() {
     }
   };
 
-  // Load products whenever filters change or refresh is triggered
+  // INITIAL PAGE LOAD - Load products when page is visited
   useEffect(() => {
-    let cancelled = false;
+    console.log('[ProductsPage] INITIAL LOAD useEffect triggered, pathname:', pathname);
+    console.log('[ProductsPage] Timestamp:', Date.now());
     
-    const loadProducts = async () => {
+    // Reset state on every navigation
+    setInitialLoadDone(false);
+    setProducts([]);
+    setLoading(true);
+    setError(null);
+    setSearchInput('');
+    setSearchTerm('');
+    setSelectedCategory('all');
+    setSortBy('name');
+    setShowInStockOnly(false);
+    
+    const loadInitialProducts = async () => {
       try {
-        console.log('[Products] Loading products...');
+        console.log('[Products - INITIAL LOAD] Starting direct Supabase query...');
         
-        setLoading(true)
-        setError(null)
+        // Import supabase directly
+        const { supabase } = await import('@/lib/supabase');
         
-        const filters = {
+        // Try direct query first to test connection
+        console.log('[Products - INITIAL LOAD] Making direct query to products table...');
+        const { data: directData, error: directError } = await supabase
+          .from('products')
+          .select('*')
+          .limit(10);
+        
+        if (directError) {
+          console.error('[Products - INITIAL LOAD] Direct query error:', directError);
+          throw directError;
+        }
+        
+        console.log('[Products - INITIAL LOAD] Direct query SUCCESS! Got', directData?.length || 0, 'products');
+        console.log('[Products - INITIAL LOAD] Setting state...');
+        setProducts(directData || [])
+        setLoading(false)
+        setInitialLoadDone(true)
+        console.log('[Products - INITIAL LOAD] State updated successfully');
+      } catch (error) {
+        console.error("[Products - INITIAL LOAD] Error:", error)
+        const errorMessage = error instanceof Error ? error.message : 'Failed to load products';
+        console.error('[Products - INITIAL LOAD] Error message:', errorMessage);
+        setError(errorMessage)
+        setProducts([])
+        setLoading(false)
+        setInitialLoadDone(true)
+      }
+    };
+
+    loadInitialProducts();
+  }, [pathname]); // Trigger when pathname changes (page navigation)
+
+  // FILTER CHANGES - Load products when filters/search/sort change
+  useEffect(() => {
+    // Skip if initial load hasn't completed yet
+    if (!initialLoadDone) {
+      console.log('[Products - FILTERS] Skipping filter load, initial load not done yet');
+      return;
+    }
+
+    const loadFilteredProducts = async () => {
+      try {
+        console.log('[Products - FILTERS] Applying filters:', {
           category: selectedCategory,
           search: searchTerm,
           inStockOnly: showInStockOnly,
           sortBy: sortBy,
+        });
+        
+        setLoading(true)
+        setError(null)
+        
+        // Direct Supabase query
+        const { supabase } = await import('@/lib/supabase');
+        let query = supabase.from('products').select('*');
+        
+        // Apply filters
+        if (selectedCategory && selectedCategory !== 'all') {
+          query = query.eq('category', selectedCategory);
+        }
+        if (searchTerm) {
+          query = query.or(`name.ilike.%${searchTerm}%,description.ilike.%${searchTerm}%`);
+        }
+        if (showInStockOnly) {
+          query = query.eq('in_stock', true);
         }
         
-        console.log('[Products] Applying filters:', filters);
-        
-        const data = await productService.getProducts(filters)
-        
-        // Only update state if this request wasn't cancelled
-        if (!cancelled) {
-          console.log('[Products] Loaded', data?.length || 0, 'products successfully');
-          setProducts(data || [])
-          setLoading(false)
+        // Apply sorting
+        if (sortBy === 'price-low') {
+          query = query.order('price', { ascending: true });
+        } else if (sortBy === 'price-high') {
+          query = query.order('price', { ascending: false });
+        } else if (sortBy === 'rating') {
+          query = query.order('rating', { ascending: false });
+        } else {
+          query = query.order('name', { ascending: true });
         }
+        
+        const { data, error } = await query;
+        
+        if (error) throw error;
+        
+        console.log('[Products - FILTERS] Successfully loaded', data?.length || 0, 'products');
+        setProducts(data || [])
+        setLoading(false)
       } catch (error) {
-        console.error("[Products] Error loading products:", error)
-        if (!cancelled) {
-          const errorMessage = error instanceof Error ? error.message : 'Failed to load products';
-          setError(errorMessage)
-          setProducts([])
-          setLoading(false)
-        }
+        console.error("[Products - FILTERS] Error:", error)
+        const errorMessage = error instanceof Error ? error.message : 'Failed to load products';
+        console.error('[Products - FILTERS] Error message:', errorMessage);
+        setError(errorMessage)
+        setProducts([])
+        setLoading(false)
       }
     };
 
-    loadProducts();
-    
-    // Cleanup function to cancel the request if filters change
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedCategory, searchTerm, sortBy, showInStockOnly, refreshTrigger])
+    loadFilteredProducts();
+  }, [selectedCategory, searchTerm, sortBy, showInStockOnly, refreshTrigger, initialLoadDone])
 
   // Background prefetching for popular products
   useEffect(() => {
