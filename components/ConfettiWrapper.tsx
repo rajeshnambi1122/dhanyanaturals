@@ -13,18 +13,9 @@ export default function ConfettiWrapper() {
       return;
     }
 
-    // Check if confetti has already been shown in this session
-    const confettiShown = sessionStorage.getItem('confetti_shown');
-    if (confettiShown) {
-      return;
-    }
-
-    // Mark confetti as shown for this session
-    sessionStorage.setItem('confetti_shown', 'true');
-
     // Fire confetti after a short delay when page loads
     const timer = setTimeout(() => {
-      const duration = 3000;
+      const duration = 3000000;
       const animationEnd = Date.now() + duration;
       const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 9999 };
 
