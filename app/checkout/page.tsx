@@ -467,6 +467,7 @@ function CheckoutPageContent() {
         // Show success UI
         setOrderId(newOrder.id);
         setOrderSuccess(true);
+        setSubmitting(false);
         
         // Fire and forget: send order placed email
         try {
