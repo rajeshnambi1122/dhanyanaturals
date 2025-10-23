@@ -120,7 +120,7 @@ export default function CartPage() {
     };
     
     fetchCart();
-  }, [authLoading, user, hasInitialized]);
+  }, [authLoading, user?.id, hasInitialized]); // Only depend on user.id, not entire user object
 
   // Re-sync cart items when user cart data changes (after refreshUser calls)
   useEffect(() => {
@@ -361,7 +361,7 @@ export default function CartPage() {
     if (subtotal <= 999) {
       // For now, we'll use a default shipping cost
       // The actual state-based calculation will happen in checkout
-      shipping = 80; // Default to rest of India rate
+      shipping = 50; // Default to rest of India rate
     }
     
     const total = subtotal + shipping;

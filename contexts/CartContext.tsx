@@ -155,7 +155,12 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     const timeoutId = setTimeout(() => {
       if (!authLoading) {
         if (user && user.cart_items) {
-          setCartItems(user.cart_items || []);
+          // Only update if cart items actually changed
+          setCartItems((prevItems) => {
+            const newCartStr = JSON.stringify(user.cart_items || []);
+            const prevCartStr = JSON.stringify(prevItems);
+            return newCartStr !== prevCartStr ? (user.cart_items || []) : prevItems;
+          });
         } else {
           setCartItems([]);
         }
@@ -163,7 +168,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     }, 100); // Small delay to batch updates
 
     return () => clearTimeout(timeoutId);
-  }, [user, authLoading]);
+  }, [user?.cart_items, authLoading]); // Only depend on cart_items, not entire user object
 
   const value = {
     cartItems,

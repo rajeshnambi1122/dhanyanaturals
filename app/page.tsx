@@ -1,8 +1,9 @@
 import Link from "next/link"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
-import { Leaf, ShoppingBag, Star, Shield, Heart, Sparkles, Zap, Award } from "lucide-react"
+import { Leaf, ShoppingBag, Star, Shield, Heart, Sparkles, Zap} from "lucide-react"
 import { productService, supabase } from "@/lib/supabase"
+import ConfettiWrapper from "@/components/ConfettiWrapper"
 
 // Revalidate the page 
 export const revalidate = 30000
@@ -147,6 +148,9 @@ export default async function HomePage() {
 
   return (
     <div className="min-h-screen glass-background page-transition">
+      {/* Confetti Effect */}
+      <ConfettiWrapper />
+      
       {/* Hero Section */}
       <section className="py-12 px-4 relative overflow-hidden">
         <div className="container mx-auto">
@@ -154,6 +158,17 @@ export default async function HomePage() {
             <div className="grid lg:grid-cols-2 lg:gap-0">
               {/* Hero Text */}
               <div className="p-8 lg:p-12 flex flex-col justify-center text-center lg:text-left order-2 lg:order-1">
+                {/* Logo */}
+                <div className="mb-6 flex justify-center lg:justify-start">
+                  <Image
+                    src="/logo.png"
+                    alt="Dhanya Naturals Logo"
+                    width={120}
+                    height={120}
+                    className="animate-fade-in"
+                    priority
+                  />
+                </div>
                 <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-gray-900 mb-6 animate-fade-in">
                   Pure. Natural. <span className="gradient-text">Organic.</span>
                 </h2>

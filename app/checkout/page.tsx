@@ -62,7 +62,7 @@ function CheckoutPageContent() {
     country: 'India'
   });
 
-  const [paymentMethod, setPaymentMethod] = useState('cod');
+  const [paymentMethod, setPaymentMethod] = useState('online');
   const [processingPayment, setProcessingPayment] = useState(false);
   const [notes, setNotes] = useState('');
   const [showPaymentWidget, setShowPaymentWidget] = useState(false);
@@ -285,7 +285,7 @@ function CheckoutPageContent() {
     
     // State-based shipping
     if (state.toLowerCase() === 'tamil nadu' || state.toLowerCase() === 'tn') {
-      return 0; // ₹50 for Tamil Nadu
+      return 50; // ₹50 for Tamil Nadu
     } else {
       return 80; // ₹80 for rest of India
     }
@@ -326,15 +326,15 @@ function CheckoutPageContent() {
       console.error('Payment error:', error);
       
       // Show more specific error message
-      let errorMessage = 'Failed to initiate payment. Please try again or choose Cash on Delivery.';
+      let errorMessage = 'Failed to initiate payment. Please try again or contact support.';
       
       if (error instanceof Error) {
         if (error.message.includes('Payment gateway not configured')) {
-          errorMessage = 'Online payments are temporarily unavailable. Please choose Cash on Delivery or contact support.';
+          errorMessage = 'Online payments are temporarily unavailable. Please contact support.';
         } else if (error.message.includes('Invalid credentials')) {
-          errorMessage = 'Payment service configuration error. Please contact support or choose Cash on Delivery.';
+          errorMessage = 'Payment service configuration error. Please contact support.';
         } else if (error.message.includes('Failed to create payment')) {
-          errorMessage = 'Unable to process payment at this time. Please try again later or choose Cash on Delivery.';
+          errorMessage = 'Unable to process payment at this time. Please try again later or contact support.';
         }
       }
       
@@ -1030,10 +1030,7 @@ function CheckoutPageContent() {
               <div className="p-4 sm:p-6 space-y-4">
                 <div className="space-y-3">
                   <div 
-                    className={`p-4 glass-input rounded-lg cursor-pointer transition-colors ${
-                      paymentMethod === 'cod' ? 'ring-2 ring-green-500 bg-green-50' : ''
-                    }`}
-                    onClick={() => setPaymentMethod('cod')}
+                    className="p-4 glass-input rounded-lg cursor-not-allowed transition-colors opacity-60 bg-gray-50"
                   >
                     <div className="flex items-center gap-3">
                       <input
@@ -1044,10 +1041,14 @@ function CheckoutPageContent() {
                         checked={paymentMethod === 'cod'}
                         onChange={(e) => setPaymentMethod(e.target.value)}
                         className="text-green-600"
+                        disabled={true}
                       />
-                      <label htmlFor="cod" className="flex-1 cursor-pointer">
-                        <div className="font-medium">Cash on Delivery</div>
-                        <div className="text-sm text-gray-600">Pay when your order arrives</div>
+                      <label htmlFor="cod" className="flex-1 cursor-not-allowed">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-gray-600">Cash on Delivery</span>
+                          <span className="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full font-medium">Coming Soon</span>
+                        </div>
+                        <div className="text-sm text-gray-500">Pay when your order arrives</div>
                       </label>
                     </div>
                   </div>

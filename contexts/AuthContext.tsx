@@ -31,7 +31,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         
         if (data.session) {
           const userProfile = await authService.getUserProfile(data.session.user.id);
-          setUser(userProfile);
+          // Only update if user data actually changed
+          setUser((prevUser: any) => {
+            const newUserStr = JSON.stringify(userProfile);
+            const prevUserStr = JSON.stringify(prevUser);
+            return newUserStr !== prevUserStr ? userProfile : prevUser;
+          });
           setIsAdmin(userProfile?.role === "admin");
         }
       } catch (error) {
@@ -54,7 +59,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (session) {
         try {
           const userProfile = await authService.getUserProfile(session.user.id);
-          setUser(userProfile);
+          // Only update if user data actually changed
+          setUser((prevUser: any) => {
+            const newUserStr = JSON.stringify(userProfile);
+            const prevUserStr = JSON.stringify(prevUser);
+            return newUserStr !== prevUserStr ? userProfile : prevUser;
+          });
           setIsAdmin(userProfile?.role === "admin");
         } catch (error) {
           console.error("Error fetching user profile:", error);
@@ -69,7 +79,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       listener.subscription.unsubscribe();
     };
-  }, [initialized]);
+  }, []);
 
   const signOut = async () => {
     try {
@@ -88,7 +98,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const authUser = await authService.getCurrentUser();
       if (authUser) {
         const userProfile = await authService.getUserProfile(authUser.id);
-        setUser(userProfile);
+        // Only update if user data actually changed
+        setUser((prevUser: any) => {
+          const newUserStr = JSON.stringify(userProfile);
+          const prevUserStr = JSON.stringify(prevUser);
+          return newUserStr !== prevUserStr ? userProfile : prevUser;
+        });
         setIsLoggedIn(true);
         setIsAdmin(userProfile?.role === 'admin');
       } else {
