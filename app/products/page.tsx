@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -27,6 +27,7 @@ export default function ProductsPage() {
   const router = useRouter()
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedCategory, setSelectedCategory] = useState("all")
   const [sortBy, setSortBy] = useState("name")
@@ -34,10 +35,51 @@ export default function ProductsPage() {
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid")
   const [showFilters, setShowFilters] = useState(false)
   const [prefetchedProducts, setPrefetchedProducts] = useState<Set<number>>(new Set())
+  const loadingRef = useRef(false)
+
+  const loadProducts = useCallback(async () => {
+    // Prevent duplicate calls
+    if (loadingRef.current) {
+      console.log('[Products] Already loading, skipping...');
+      return;
+    }
+    
+    console.log('[Products] Loading products with filters:', {
+      category: selectedCategory,
+      search: searchTerm,
+      inStockOnly: showInStockOnly,
+      sortBy: sortBy
+    });
+    
+    loadingRef.current = true;
+    setLoading(true)
+    setError(null)
+    
+    try {
+      const filters = {
+        category: selectedCategory,
+        search: searchTerm,
+        inStockOnly: showInStockOnly,
+        sortBy: sortBy,
+      }
+      const data = await productService.getProducts(filters)
+      console.log('[Products] Loaded products:', data?.length || 0);
+      setProducts(data || [])
+    } catch (error) {
+      console.error("[Products] Error loading products:", error)
+      const errorMessage = error instanceof Error ? error.message : 'Failed to load products';
+      setError(errorMessage)
+      setProducts([]) // Set empty array on error
+    } finally {
+      setLoading(false)
+      loadingRef.current = false;
+    }
+  }, [selectedCategory, searchTerm, sortBy, showInStockOnly])
 
   useEffect(() => {
+    console.log('[Products] useEffect triggered, calling loadProducts');
     loadProducts()
-  }, [selectedCategory, searchTerm, sortBy, showInStockOnly])
+  }, [loadProducts])
 
   // Background prefetching for popular products
   useEffect(() => {
@@ -63,24 +105,6 @@ export default function ProductsPage() {
     const timeoutId = setTimeout(prefetchPopularProducts, 2000)
     return () => clearTimeout(timeoutId)
   }, [products, router, prefetchedProducts])
-
-  const loadProducts = async () => {
-    setLoading(true)
-    try {
-      const filters = {
-        category: selectedCategory,
-        search: searchTerm,
-        inStockOnly: showInStockOnly,
-        sortBy: sortBy,
-      }
-      const data = await productService.getProducts(filters)
-      setProducts(data)
-    } catch (error) {
-      console.error("Error loading products:", error)
-    } finally {
-      setLoading(false)
-    }
-  }
 
   // Prefetch product data on hover
   const handleProductHover = async (productId: number) => {
@@ -390,23 +414,33 @@ export default function ProductsPage() {
               </div>
             )}
 
-            {products.length === 0 && (
+            {products.length === 0 && !loading && (
               <div className="text-center py-16 animate-fade-in">
                 <div className="glass-card p-12 max-w-md mx-auto">
-                  <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <Search className="h-8 w-8 text-gray-400" />
+                  <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 ${error ? 'bg-red-100' : 'bg-gray-100'}`}>
+                    {error ? (
+                      <span className="text-4xl">⚠️</span>
+                    ) : (
+                      <Search className="h-8 w-8 text-gray-400" />
+                    )}
                   </div>
-                  <h3 className="text-xl font-semibold mb-2">No products found</h3>
-                  <p className="text-gray-500 mb-6">Try adjusting your search or filter criteria.</p>
+                  <h3 className="text-xl font-semibold mb-2">
+                    {error ? 'Error Loading Products' : 'No products found'}
+                  </h3>
+                  <p className="text-gray-500 mb-6">
+                    {error ? error : 'Try adjusting your search or filter criteria.'}
+                  </p>
                   <Button
                     onClick={() => {
                       setSearchTerm("")
                       setSelectedCategory("all")
                       setShowInStockOnly(false)
+                      setError(null)
+                      loadProducts()
                     }}
                     className="glass-button-secondary"
                   >
-                    Clear Filters
+                    {error ? 'Retry' : 'Clear Filters'}
                   </Button>
                 </div>
               </div>

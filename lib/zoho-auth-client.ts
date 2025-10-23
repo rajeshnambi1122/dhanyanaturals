@@ -96,7 +96,7 @@ export async function initializeZohoPaymentWidget(
     if (!paymentsSessionId) {
       throw new Error('Invalid session response');
     }
-
+    
     return {
       success: true,
       payments_session_id: paymentsSessionId

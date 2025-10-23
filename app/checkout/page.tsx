@@ -79,6 +79,9 @@ function CheckoutPageContent() {
   const [paymentOrderId, setPaymentOrderId] = useState<string>('');
   const [orderIdGenerated, setOrderIdGenerated] = useState(false);
 
+  // Don't use auto-refresh timeout on checkout page - payment widget has its own timeout
+  // useApiTimeout is disabled here to prevent interference with payment flow
+
   // Fetch latest order number and generate next order reference
   useEffect(() => {
     if (orderIdGenerated) return;
@@ -316,7 +319,7 @@ function CheckoutPageContent() {
     
     // State-based shipping
     if (state.toLowerCase() === 'tamil nadu' || state.toLowerCase() === 'tn') {
-      return 50; // ₹50 for Tamil Nadu
+      return 0; // ₹50 for Tamil Nadu
     } else {
       return 80; // ₹80 for rest of India
     }
@@ -334,24 +337,18 @@ function CheckoutPageContent() {
 
   // Handle online payment with Zoho Widget
   const handleOnlinePayment = async (orderData: any) => {
-    // If payment was already completed, don't show the widget again
-    if (paymentCompleted) {
-      console.log('Payment already completed, skipping payment widget');
-      return;
-    }
+    if (paymentCompleted) return;
 
-    console.log('💳 handleOnlinePayment called - showing payment widget');
     setProcessingPayment(true);
     
     try {
-      // Check if Zoho Payments is properly configured
       if (!process.env.NEXT_PUBLIC_ZOHO_ACCOUNT_ID || !process.env.NEXT_PUBLIC_ZOHO_API_KEY) {
         throw new Error('Payment gateway not configured. Please contact support.');
       }
 
-      // Just show the payment widget - it will create the session internally
       setShowPaymentWidget(true);
       setProcessingPayment(false);
+
       
     } catch (error) {
       console.error('Payment error:', error);
@@ -408,22 +405,12 @@ function CheckoutPageContent() {
       });
 
       const verifyResult = await verifyResponse.json();
-      console.log('Payment verification result:', verifyResult);
-      console.log('Verification details:', {
-        responseOk: verifyResponse.ok,
-        hasIsSuccess: 'is_success' in verifyResult,
-        isSuccessValue: verifyResult.is_success,
-        hasSuccess: 'success' in verifyResult,
-        successValue: verifyResult.success,
-        isFailed: verifyResult.is_failed
-      });
       
-      // Add detailed logging to understand verification issues
       if (!verifyResponse.ok) {
-        console.error('Payment verification HTTP error:', verifyResponse.status, verifyResponse.statusText);
+        console.error('Payment verification error:', verifyResponse.status);
+        throw new Error(verifyResult.error || 'Payment verification failed');
       }
       
-      // Check if we have a successful verification
       if (verifyResponse.ok && verifyResult.success && verifyResult.is_success) {
         // Payment verified successfully - create order with confirmed status
         const orderData = {
@@ -448,7 +435,6 @@ function CheckoutPageContent() {
 
         // Create order using existing orderService
         const newOrder = await orderService.createOrder(orderData);
-        console.log('Order created successfully:', newOrder);
         
         // Clear cart after successful order (only for regular cart checkout, not buy now)
         if (!isBuyNow) {
@@ -464,20 +450,20 @@ function CheckoutPageContent() {
           localStorage.removeItem('payment_time');
         }
         
-        // Show success UI
+        // Show success UI immediately
         setOrderId(newOrder.id);
         setOrderSuccess(true);
         setSubmitting(false);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
         
-        // Fire and forget: send order placed email
-        try {
-          const token = await getSessionToken();
+        // Fire and forget: send order placed email (completely async, non-blocking)
+        getSessionToken().then(token => {
           if (token) {
-            await fetch('/api/email/placed', {
+            fetch('/api/email/placed', {
               method: 'POST',
               headers: { 
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}` // ✅ SECURITY: Include auth token
+                'Authorization': `Bearer ${token}`
               },
               body: JSON.stringify({
                 to: customerDetails.email,
@@ -486,27 +472,21 @@ function CheckoutPageContent() {
                 total: total,
                 items: cartItems
               }),
-            });
+            }).catch(err => console.error('Email error:', err));
           }
-        } catch (emailError) {
-          console.error('Failed to send order email:', emailError);
-        }
+        }).catch(err => console.error('Failed to get session token for email:', err));
         
-        return; // Exit early to prevent further processing
+        return;
       } else {
         throw new Error(verifyResult.error || 'Payment verification failed');
       }
     } catch (error) {
-      console.error('Payment verification error:', error);
+      console.error('Payment processing error:', error);
       
-      // Try to extract more detailed error information
-      let errorMessage = 'Payment verification failed. Please contact support.';
-      if (error instanceof Error) {
-        console.error('Error details:', error.message, error.stack);
-        // Don't show technical details to users, but log them for debugging
-      }
+      const errorMessage = error instanceof Error 
+        ? `Payment failed: ${error.message}` 
+        : 'Payment verification failed. Please contact support.';
       
-      // Show a more user-friendly message
       alert(errorMessage);
       
       // Create a failed order for tracking
@@ -645,6 +625,7 @@ function CheckoutPageContent() {
     }
 
     setSubmitting(true);
+    
     try {
       // Prepare order data
       const orderData = {
@@ -661,20 +642,16 @@ function CheckoutPageContent() {
           total: item.price * item.quantity
         })),
         total_amount: total,
-        status: 'processing' as const, // COD orders start as processing
+        status: 'processing' as const,
         payment_status: 'pending' as const,
         notes: notes || undefined
       };
 
     // Handle online payment
     if (paymentMethod === 'online') {
-      // If payment was already completed, don't show the widget again
       if (!paymentCompleted) {
         await handleOnlinePayment(orderData);
-        return; // Exit here, completion will be handled by payment success page
-      } else {
-        console.log('Payment already completed, skipping payment widget');
-        // Continue with order creation if payment was already completed
+        return;
       }
     }
 
@@ -922,7 +899,7 @@ function CheckoutPageContent() {
                       value={customerDetails.phone}
                       onChange={(e) => setCustomerDetails(prev => ({ ...prev, phone: e.target.value }))}
                       className="glass-input"
-                      placeholder="9876543210"
+                      placeholder="Enter your phone number"
                       maxLength={15}
                       minLength={10}
                     />

@@ -41,12 +41,27 @@ export default function ZohoPaymentWidget({
   cartItems,
   shippingCharge
 }: ZohoPaymentWidgetProps) {
-  console.log('🔄 ZohoPaymentWidget component rendered/re-rendered for orderId:', orderId);
-  
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const instanceRef = useRef<any>(null);
   const isInitializedRef = useRef(false); // Track if widget has been initialized
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Add timeout to prevent infinite loading (10 seconds)
+  useEffect(() => {
+    timeoutRef.current = setTimeout(() => {
+      if (isLoading) {
+        console.error('Payment widget loading timeout');
+        setError('Payment initialization timed out. Please try again.');
+      }
+    }, 10000); // 10 second timeout for payment widget
+
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, [isLoading]);
   
   // Initialize widget and check payment completion
   useEffect(() => {
@@ -57,7 +72,6 @@ export default function ZohoPaymentWidget({
         const paymentId = localStorage.getItem('payment_id');
         
         if (paymentCompleted && paymentId) {
-          console.log('Payment already completed, closing widget');
           onClose();
           return;
         }
@@ -65,11 +79,9 @@ export default function ZohoPaymentWidget({
 
       // Prevent multiple initializations
       if (isInitializedRef.current) {
-        console.log('⚠️ Widget already initialized, skipping...');
         return;
       }
       
-      console.log('🎯 Initializing ZohoPaymentWidget for orderId:', orderId);
       isInitializedRef.current = true;
       
       try {
@@ -210,7 +222,8 @@ export default function ZohoPaymentWidget({
         <div className="bg-white rounded-lg p-8 max-w-md mx-4">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto mb-4"></div>
           <h3 className="text-lg font-semibold text-center mb-2">Loading Payment...</h3>
-          <p className="text-gray-600 text-center">Please wait while we initialize the payment widget.</p>
+          <p className="text-gray-600 text-center mb-2">Please wait while we initialize the payment widget.</p>
+          <p className="text-gray-400 text-xs text-center">This should take only a few seconds...</p>
         </div>
       </div>
     );

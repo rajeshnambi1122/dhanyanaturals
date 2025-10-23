@@ -189,7 +189,7 @@ export const productService = {
       }
   
       return data || []
-    }, 2, 3000); // Retry 2 times with 3 second timeout
+    }, 3, 15000); // Retry 3 times with 15 second timeout
   },
 
   // Get single product by ID

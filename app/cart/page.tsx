@@ -472,12 +472,20 @@ export default function CartPage() {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => updateQuantity(item.product_id, item.quantity - 1)}
+                            onClick={() => {
+                              if (item.quantity === 1) {
+                                removeItem(item.product_id);
+                              } else {
+                                updateQuantity(item.product_id, item.quantity - 1);
+                              }
+                            }}
                             disabled={updating === item.product_id}
                             className="glass-input h-8 w-8 p-0 sm:h-9 sm:w-9"
                           >
                             {updating === item.product_id ? (
                               <Loader2 className="h-3 w-3 sm:h-4 sm:w-4 animate-spin" />
+                            ) : item.quantity === 1 ? (
+                              <Trash2 className="h-3 w-3 sm:h-4 sm:w-4" />
                             ) : (
                               <Minus className="h-3 w-3 sm:h-4 sm:w-4" />
                             )}

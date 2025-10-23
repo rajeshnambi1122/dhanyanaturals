@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect, useRef } from "react"
+import React, { useState, useEffect, useRef, useCallback } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -55,23 +55,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
   
   const loadingRef = useRef(false) // Prevent race conditions
 
-  useEffect(() => {
-    // Prevent duplicate API calls in React Strict Mode
-    if (dataLoaded || !id || loadingRef.current) return;
-    
-    console.log(`[Product] useEffect triggered for ID: ${id}`);
-    loadingRef.current = true;
-    loadProduct()
-    loadReviews()
-  }, [id, dataLoaded])
-
-  useEffect(() => {
-    if (user && reviews.length > 0) {
-      extractUserReview()
-    }
-  }, [user, reviews])
-
-  const loadProduct = async () => {
+  const loadProduct = useCallback(async () => {
     try {
       console.log(`[Product] Loading product ID: ${id}`);
       const productData = await productService.getProductById(Number.parseInt(id))
@@ -92,9 +76,9 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
       setLoading(false)
       setDataLoaded(true) // Mark as loaded to prevent duplicate calls
     }
-  }
+  }, [id, router])
 
-  const loadReviews = async () => {
+  const loadReviews = useCallback(async () => {
     try {
       console.log(`[Product] Loading reviews for product ID: ${id}`);
       const reviewsData = await reviewService.getProductReviews(parseInt(id))
@@ -102,9 +86,9 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
     } catch (error) {
       console.error("Error loading reviews:", error)
     }
-  }
+  }, [id])
 
-  const extractUserReview = () => {
+  const extractUserReview = useCallback(() => {
     if (!user) return
     
     // Find user's review from already loaded reviews (no API call needed!)
@@ -125,7 +109,23 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
         reviewText: ""
       })
     }
-  }
+  }, [user, reviews])
+
+  useEffect(() => {
+    // Prevent duplicate API calls in React Strict Mode
+    if (dataLoaded || !id || loadingRef.current) return;
+    
+    console.log(`[Product] useEffect triggered for ID: ${id}`);
+    loadingRef.current = true;
+    loadProduct()
+    loadReviews()
+  }, [id, dataLoaded, loadProduct, loadReviews])
+
+  useEffect(() => {
+    if (user && reviews.length > 0) {
+      extractUserReview()
+    }
+  }, [user, reviews, extractUserReview])
 
   const handleAddToCart = async () => {
     if (!user) {
@@ -708,7 +708,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
                   <Truck className="h-5 w-5 text-green-600" />
                   <div>
                     <p className="font-medium text-sm">Free Shipping</p>
-                    <p className="text-xs text-gray-500">On orders over ₹1000</p>
+                    <p className="text-xs text-gray-500">On orders over ₹999</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
