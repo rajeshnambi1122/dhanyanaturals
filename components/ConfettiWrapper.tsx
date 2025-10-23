@@ -10,12 +10,14 @@ export default function ConfettiWrapper() {
   useEffect(() => {
     // Only fire confetti on homepage
     if (pathname !== '/' || typeof window === 'undefined') {
+      // Clear any existing confetti when not on homepage
+      confetti.reset();
       return;
     }
 
     // Fire confetti after a short delay when page loads
     const timer = setTimeout(() => {
-      const duration = 3000000;
+      const duration = 9000; // 3 seconds - shorter duration prevents spillover to other pages
       const animationEnd = Date.now() + duration;
       const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 9999 };
 
@@ -27,7 +29,8 @@ export default function ConfettiWrapper() {
         const timeLeft = animationEnd - Date.now();
 
         if (timeLeft <= 0) {
-          return clearInterval(interval);
+          clearInterval(interval);
+          return;
         }
 
         const particleCount = 50 * (timeLeft / duration);
@@ -48,7 +51,11 @@ export default function ConfettiWrapper() {
       return () => clearInterval(interval);
     }, 500);
 
-    return () => clearTimeout(timer);
+    // Cleanup function - stops confetti when navigating away
+    return () => {
+      clearTimeout(timer);
+      confetti.reset(); // Clear all confetti when leaving the page
+    };
   }, [pathname]);
 
   return null;
