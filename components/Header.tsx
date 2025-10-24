@@ -41,9 +41,9 @@ export default function Header() {
             <Link href="/" className="glass-nav-item text-gray-700 hover:text-green-600">
               Home
             </Link>
-            <a href="/products" className="glass-nav-item text-gray-700 hover:text-green-600">
+            <Link href="/products" className="glass-nav-item text-gray-700 hover:text-green-600">
               Products
-            </a>
+            </Link>
             <Link href="/about" className="glass-nav-item text-gray-700 hover:text-green-600">
               About
             </Link>

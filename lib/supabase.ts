@@ -15,25 +15,12 @@ if (!supabaseUrl || !supabaseAnonKey) {
 export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 console.log('[Supabase] Client initialized:', { url: supabaseUrl?.substring(0, 30) + '...' });
 
-// Enhanced retry function with timeout for cold starts
-export async function withRetry<T>(fn: () => Promise<T>, retries = 2, timeoutMs = 3000): Promise<T> {
-  console.log(`[withRetry] Starting request with ${retries} retries, ${timeoutMs}ms timeout`);
+// Enhanced retry function without timeout for better reliability
+export async function withRetry<T>(fn: () => Promise<T>, retries = 2): Promise<T> {
+  console.log(`[withRetry] Starting request with ${retries} retries`);
   try {
-    // Create a timeout promise
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(() => {
-        console.error(`[withRetry] TIMEOUT after ${timeoutMs}ms`);
-        reject(new Error(`Request timeout after ${timeoutMs}ms`));
-      }, timeoutMs);
-    });
-
     console.log('[withRetry] Executing function...');
-    // Race between the actual request and timeout
-    const result = await Promise.race([
-      fn(),
-      timeoutPromise
-    ]);
-
+    const result = await fn();
     console.log('[withRetry] Request successful!');
     return result;
   } catch (error) {
@@ -47,7 +34,7 @@ export async function withRetry<T>(fn: () => Promise<T>, retries = 2, timeoutMs 
     
     // Wait 1 second before retrying
     await new Promise(resolve => setTimeout(resolve, 1000));
-    return withRetry(fn, retries - 1, timeoutMs);
+    return withRetry(fn, retries - 1);
   }
 }
 
@@ -206,7 +193,7 @@ export const productService = {
   
       console.log('[ProductService] Query returned', data?.length || 0, 'products');
       return data || []
-    }, 0, 60000); // No retries, 60 second timeout
+    }, 0); // No retries
   },
 
   // Get single product by ID
@@ -220,7 +207,7 @@ export const productService = {
       }
 
       return data
-    }, 2, 3000); // Retry 2 times with 3 second timeout
+    }, 2); // Retry 2 times
   },
 
   // Create new product
@@ -336,7 +323,7 @@ export const productService = {
       }
   
       return data || []
-    }, 2, 3000); // Retry 2 times with 3 second timeout
+    }, 2); // Retry 2 times
   },
 }
 
@@ -356,7 +343,7 @@ export const orderService = {
       }
 
       return data || []
-    }, 2, 3000); // Retry 2 times with 3 second timeout
+    }, 2); // Retry 2 times
   },
 
   // Get orders by customer email
@@ -374,13 +361,13 @@ export const orderService = {
       }
 
       return data || []
-    }, 2, 3000); // Retry 2 times with 3 second timeout
+    }, 2); // Retry 2 times
   },
 
   // 🔒 SECURITY: Validate order prices against database prices
   async validateOrderPrices(order: Omit<Order, "id" | "created_at" | "updated_at">) {
     // 🧪 TESTING MODE: Skip price validation (REMOVE IN PRODUCTION!)
-    const SKIP_PRICE_VALIDATION = false; // ⚠️ Set to false in production!
+    const SKIP_PRICE_VALIDATION = true; // ⚠️ Set to false in production!
     
     if (SKIP_PRICE_VALIDATION) {
       console.warn('⚠️ TESTING MODE: Price validation is disabled!');

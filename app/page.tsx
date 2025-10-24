@@ -177,12 +177,12 @@ export default async function HomePage() {
                   love, free from chemicals.
                 </p>
                 <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start animate-slide-up">
-                  <a href="/products">
+                  <Link href="/products">
                     <Button size="lg" className="glass-button hover-lift">
                       <Sparkles className="h-5 w-5 mr-2" />
-                      Shop Now
-                    </Button>
-                  </a>
+                        Shop Now
+                      </Button>
+                    </Link>
                 </div>
               </div>
               
@@ -273,11 +273,11 @@ export default async function HomePage() {
               </h2>
               <p className="text-xl text-gray-600">Handpicked favorites loved by our customers</p>
             </div>
-            <a href="/products">
+            <Link href="/products">
               <Button variant="outline" className="glass-button-secondary hover-lift bg-transparent">
                 View All Products
               </Button>
-            </a>
+            </Link>
           </div>
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-8 stagger-animation">
             {featuredProducts.length > 0 ? featuredProducts.map((product, index) => (
@@ -341,11 +341,11 @@ export default async function HomePage() {
                   </svg>
                   <h3 className="text-lg font-semibold text-gray-600 mb-2">No Featured Products Yet</h3>
                   <p className="text-gray-500 mb-4">We're working on adding some amazing featured products for you!</p>
-                  <a href="/products">
+                  <Link href="/products">
                     <Button className="glass-button">
                       Browse All Products
                     </Button>
-                  </a>
+                  </Link>
                 </div>
               </div>
             )}

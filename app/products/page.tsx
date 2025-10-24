@@ -1,5 +1,4 @@
 "use client"
-
 import { useState, useEffect } from "react"
 import Image from "next/image"
 import Link from "next/link"
@@ -9,8 +8,9 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
-import { Leaf, ShoppingBag, Star, Search, Grid, List, Filter, SlidersHorizontal, Heart, Sparkles } from "lucide-react"
+import { ShoppingBag, Star, Search, Grid, List, Filter, SlidersHorizontal, Heart, Sparkles } from "lucide-react"
 import { productService, type Product } from "@/lib/supabase"
+import dynamic from "next/dynamic"
 
 
 const categories = [
@@ -23,7 +23,7 @@ const categories = [
   { id: "essential-oils", name: "Essential Oils", icon: "🌸" },
 ]
 
-export default function ProductsPage() {
+function ProductsPage() {
   const router = useRouter()
   const pathname = usePathname()
   const [products, setProducts] = useState<Product[]>([])
@@ -38,7 +38,6 @@ export default function ProductsPage() {
   const [showFilters, setShowFilters] = useState(false)
   const [prefetchedProducts, setPrefetchedProducts] = useState<Set<number>>(new Set())
   const [refreshTrigger, setRefreshTrigger] = useState(0) // Trigger for manual refresh
-  const [initialLoadDone, setInitialLoadDone] = useState(false)
 
   // Debug: Log component render
   console.log('[ProductsPage] Component rendered, pathname:', pathname, 'products count:', products.length, 'loading:', loading)
@@ -56,126 +55,42 @@ export default function ProductsPage() {
     }
   };
 
-  // INITIAL PAGE LOAD - Load products when page is visited
+  // Load products on component mount and when filters change
   useEffect(() => {
-    console.log('[ProductsPage] INITIAL LOAD useEffect triggered, pathname:', pathname);
-    console.log('[ProductsPage] Timestamp:', Date.now());
+    console.log('[ProductsPage] LOAD EFFECT triggered, pathname:', pathname);
     
-    // Reset state on every navigation
-    setInitialLoadDone(false);
-    setProducts([]);
-    setLoading(true);
-    setError(null);
-    setSearchInput('');
-    setSearchTerm('');
-    setSelectedCategory('all');
-    setSortBy('name');
-    setShowInStockOnly(false);
-    
-    const loadInitialProducts = async () => {
+    const loadProducts = async () => {
       try {
-        console.log('[Products - INITIAL LOAD] Starting direct Supabase query...');
+        console.log('[Products - LOAD] Starting product load...');
+        setLoading(true);
+        setError(null);
         
-        // Import supabase directly
-        const { supabase } = await import('@/lib/supabase');
+        // Add small delay to ensure client-side rendering
+        await new Promise(resolve => setTimeout(resolve, 100));
         
-        // Try direct query first to test connection
-        console.log('[Products - INITIAL LOAD] Making direct query to products table...');
-        const { data: directData, error: directError } = await supabase
-          .from('products')
-          .select('*')
-          .limit(10);
-        
-        if (directError) {
-          console.error('[Products - INITIAL LOAD] Direct query error:', directError);
-          throw directError;
-        }
-        
-        console.log('[Products - INITIAL LOAD] Direct query SUCCESS! Got', directData?.length || 0, 'products');
-        console.log('[Products - INITIAL LOAD] Setting state...');
-        setProducts(directData || [])
-        setLoading(false)
-        setInitialLoadDone(true)
-        console.log('[Products - INITIAL LOAD] State updated successfully');
-      } catch (error) {
-        console.error("[Products - INITIAL LOAD] Error:", error)
-        const errorMessage = error instanceof Error ? error.message : 'Failed to load products';
-        console.error('[Products - INITIAL LOAD] Error message:', errorMessage);
-        setError(errorMessage)
-        setProducts([])
-        setLoading(false)
-        setInitialLoadDone(true)
-      }
-    };
-
-    loadInitialProducts();
-  }, [pathname]); // Trigger when pathname changes (page navigation)
-
-  // FILTER CHANGES - Load products when filters/search/sort change
-  useEffect(() => {
-    // Skip if initial load hasn't completed yet
-    if (!initialLoadDone) {
-      console.log('[Products - FILTERS] Skipping filter load, initial load not done yet');
-      return;
-    }
-
-    const loadFilteredProducts = async () => {
-      try {
-        console.log('[Products - FILTERS] Applying filters:', {
+        // Use the service instead of direct query for consistency
+        const products = await productService.getProducts({
           category: selectedCategory,
           search: searchTerm,
           inStockOnly: showInStockOnly,
           sortBy: sortBy,
         });
+        console.log('[Products - LOAD] Got', products.length, 'products');
         
-        setLoading(true)
-        setError(null)
-        
-        // Direct Supabase query
-        const { supabase } = await import('@/lib/supabase');
-        let query = supabase.from('products').select('*');
-        
-        // Apply filters
-        if (selectedCategory && selectedCategory !== 'all') {
-          query = query.eq('category', selectedCategory);
-        }
-        if (searchTerm) {
-          query = query.or(`name.ilike.%${searchTerm}%,description.ilike.%${searchTerm}%`);
-        }
-        if (showInStockOnly) {
-          query = query.eq('in_stock', true);
-        }
-        
-        // Apply sorting
-        if (sortBy === 'price-low') {
-          query = query.order('price', { ascending: true });
-        } else if (sortBy === 'price-high') {
-          query = query.order('price', { ascending: false });
-        } else if (sortBy === 'rating') {
-          query = query.order('rating', { ascending: false });
-        } else {
-          query = query.order('name', { ascending: true });
-        }
-        
-        const { data, error } = await query;
-        
-        if (error) throw error;
-        
-        console.log('[Products - FILTERS] Successfully loaded', data?.length || 0, 'products');
-        setProducts(data || [])
-        setLoading(false)
+        setProducts(products);
       } catch (error) {
-        console.error("[Products - FILTERS] Error:", error)
+        console.error("[Products - LOAD] Error:", error);
         const errorMessage = error instanceof Error ? error.message : 'Failed to load products';
-        console.error('[Products - FILTERS] Error message:', errorMessage);
-        setError(errorMessage)
-        setProducts([])
-        setLoading(false)
+        setError(errorMessage);
+        setProducts([]);
+      } finally {
+        setLoading(false);
       }
     };
 
-    loadFilteredProducts();
-  }, [selectedCategory, searchTerm, sortBy, showInStockOnly, refreshTrigger, initialLoadDone])
+    loadProducts();
+  }, [pathname, selectedCategory, searchTerm, sortBy, showInStockOnly, refreshTrigger]); // All dependencies
+
 
   // Background prefetching for popular products
   useEffect(() => {
@@ -564,3 +479,11 @@ export default function ProductsPage() {
     </div>
   )
 }
+
+// Force client-side rendering to make Supabase API calls visible in Network tab
+export default dynamic(() => Promise.resolve(ProductsPage), { 
+  ssr: false,
+  loading: () => <div className="flex items-center justify-center min-h-screen">
+    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600"></div>
+  </div>
+})

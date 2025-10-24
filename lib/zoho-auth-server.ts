@@ -256,7 +256,7 @@ export async function createPaymentSession(
       },
       accessToken
     );
-
+    
     const text = await response.text();
     
     if (!response.ok) {
@@ -370,7 +370,7 @@ export async function verifyPayment(
     }
 
     // Determine payment status - handle various success status formats from Zoho
-    const successStatuses = ['succeeded', 'success', 'approved', 'captured', 'completed', 'authorized'];
+    const successStatuses = ['succeeded', 'success', 'approved', 'captured', 'completed', 'authorized', 'paid'];
     const failedStatuses = ['failed', 'declined', 'cancelled', 'rejected', 'expired'];
     
     // Extract status from payment data, with fallbacks
@@ -398,13 +398,15 @@ export async function verifyPayment(
     const isSuccess = successStatuses.some(s => status.includes(s));
     const isFailed = failedStatuses.some(s => status.includes(s));
     
-    // Default to success if we have payment data but status is unclear
-    // This is a temporary fix for testing - you may want to adjust this for production
-    const forceSuccess = false; // Set to false in production if you want stricter verification
-
-    // For testing: if forceSuccess is true, treat all non-failed payments as successful
-    const finalIsSuccess = isSuccess || (forceSuccess && !isFailed);
-
+    // Determine final success status based on explicit success statuses
+    const finalIsSuccess = isSuccess;
+    
+    console.log('Payment status determination:', {
+      isSuccess,
+      isFailed,
+      finalIsSuccess,
+      hasPaymentData: !!paymentData
+    });
     // Extract payment details from the nested structure if present
     const payment = paymentData.payment || paymentData;
     
