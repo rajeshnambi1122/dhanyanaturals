@@ -7,7 +7,6 @@ import { useCart } from "@/contexts/CartContext";
 import Image from "next/image"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { ShoppingBag, Plus, Minus, Trash2, ArrowLeft, Loader2 } from "lucide-react"
 import { CartItemWithDetails, CartItem } from "@/lib/types"
 
@@ -23,7 +22,6 @@ export default function CartPage() {
   const { addToCart: addToCartContext } = useCart();
   const router = useRouter();
   const fetchingRef = useRef(false);
-  const userIdRef = useRef<string | null>(null);
   const initializationRef = useRef(false);
   const productMap = useRef<Record<number, any>>({});
 
@@ -219,6 +217,9 @@ export default function CartPage() {
         const userId = user.user_id || user.id;
         await userDataService.removeFromCart(userId, productId);
         setCartItems(prev => prev.filter((item) => item.product_id !== productId));
+        
+        // Refresh AuthContext so checkout page can see the updated cart
+        await refreshUser();
       } else {
         // Check stock before updating
         const item = cartItems.find(item => item.product_id === productId);
@@ -235,9 +236,12 @@ export default function CartPage() {
 
         const userId = user.user_id || user.id;
         await userDataService.updateCartQuantity(userId, productId, newQuantity);
+        
+        // Refresh AuthContext so checkout page can see the updated cart
+        await refreshUser();
       }
       
-      // No refresh needed - optimistic updates provide immediate feedback
+      // Cart updated successfully
     } catch (error) {
       console.error('Error updating quantity:', error);
       alert('Failed to update quantity');
@@ -274,7 +278,8 @@ export default function CartPage() {
       const userId = user.user_id || user.id;
       await userDataService.removeFromCart(userId, productId);
       
-      // No need to refresh user - CartContext will handle the sync automatically
+      // Refresh AuthContext so checkout page can see the updated cart
+      await refreshUser();
     } catch (error) {
       console.error('Error removing item:', error);
       alert('Failed to remove item');
@@ -407,7 +412,9 @@ export default function CartPage() {
           {cartItems.length > 0 && (
             <Button 
               variant="outline" 
-              onClick={clearCart}
+              onClick={() => {
+                clearCart();
+              }}
               size="sm"
               className="text-red-600 hover:text-red-700 hover:bg-red-50 w-full sm:w-auto"
             >
@@ -543,7 +550,7 @@ export default function CartPage() {
                     <span>Subtotal</span>
                     <span className="font-medium">₹{subtotal.toFixed(2)}</span>
                   </div>
-                  <div className="flex justify-between text-sm sm:text-base">
+                  <div className="flex justify-between mt-2 text-sm sm:text-base">
                     <span>Shipping</span>
                     <span className="font-medium">{shipping === 0 ? "Free" : `₹${shipping.toFixed(2)}`}</span>
                   </div>

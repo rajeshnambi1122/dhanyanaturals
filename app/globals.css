@@ -151,6 +151,12 @@
   overflow: hidden;
 }
 
+/* Override position for fixed positioning in modals */
+.fixed.glass-card,
+[style*="z-index"].glass-card {
+  position: fixed !important;
+}
+
 .glass-card::before {
   content: "";
   position: absolute;

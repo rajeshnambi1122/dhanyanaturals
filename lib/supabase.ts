@@ -1,137 +1,161 @@
-import { createClient } from "@supabase/supabase-js"
+"use client"
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
+import { Product, OrderItem, Order, CartItem, WishlistItem, Review, UserData } from "./types"
+// Type definitions (moved from supabase.ts)
 
-// Debug: Check environment variables
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.error('[Supabase] Missing environment variables!', { 
-    hasUrl: !!supabaseUrl, 
-    hasKey: !!supabaseAnonKey 
-  });
+// Create the Supabase client for browser usage
+// Note: createClientComponentClient() uses HTTP-only cookies for token storage by default
+// Tokens are NOT stored in localStorage for security reasons
+export const supabase = createClientComponentClient()
+
+let cachedClient: ReturnType<typeof createClientComponentClient> | null = null
+
+export function getSupabaseClient() {
+  if (cachedClient) {
+    return cachedClient
+  }
+  cachedClient = createClientComponentClient()
+  return cachedClient
 }
 
-// Create the Supabase client
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
-console.log('[Supabase] Client initialized:', { url: supabaseUrl?.substring(0, 30) + '...' });
-
-// Enhanced retry function without timeout for better reliability
-export async function withRetry<T>(fn: () => Promise<T>, retries = 2): Promise<T> {
-  console.log(`[withRetry] Starting request with ${retries} retries`);
+// Helper function to refresh session if expired
+async function ensureValidSession() {
   try {
-    console.log('[withRetry] Executing function...');
-    const result = await fn();
-    console.log('[withRetry] Request successful!');
-    return result;
-  } catch (error) {
-    if (retries <= 0) {
-      console.error('All retry attempts exhausted:', error);
-      throw error;
+    const client = getSupabaseClient();
+    const { data: { session }, error } = await client.auth.getSession()
+    
+    if (error) {
+      console.error('[Session] Error getting session:', error)
+      try {
+        const { data: refreshData, error: refreshError } = await client.auth.refreshSession()
+        if (!refreshError && refreshData.session) {
+          console.log('[Session] Session refreshed after getSession error')
+          return true
+        }
+      } catch (refreshErr) {
+        console.error('[Session] Failed to refresh after getSession error:', refreshErr)
+      }
+      return false
     }
     
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    console.log(`Request failed (${errorMessage}), retrying... (${retries} attempts left)`);
+    if (session && (session as any).expires_at) {
+      const expiresAt = (session as any).expires_at * 1000
+      const now = Date.now()
+      const bufferTime = 60 * 1000
+      
+      if (now >= expiresAt - bufferTime) {
+        console.log('[Session] Session expiring soon, refreshing proactively...')
+        const { data: refreshData, error: refreshError } = await client.auth.refreshSession()
+        
+        if (refreshError) {
+          console.error('[Session] Error refreshing session:', refreshError)
+          return true
+        }
+        
+        if (refreshData.session) {
+          console.log('[Session] Session refreshed successfully')
+          return true
+        }
+      }
+      
+      return true
+    }
     
-    // Wait 1 second before retrying
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    return withRetry(fn, retries - 1);
+    if (!session) {
+      console.log('[Session] No session found, attempting refresh...')
+      try {
+        const { data: refreshData, error: refreshError } = await client.auth.refreshSession()
+        if (!refreshError && refreshData.session) {
+          console.log('[Session] Session restored via refresh')
+          return true
+        }
+      } catch {}
+    }
+    
+    return !!session
+  } catch (error) {
+    console.error('[Session] Error ensuring valid session:', error)
+    return true
   }
 }
 
-// Types for our database tables
-export interface Product {
-  id: number
-  name: string
-  description: string
-  long_description?: string
-  price: number
-  original_price?: number
-  category: string
-  image_url?: string
-  images?: string[]
-  rating?: number
-  reviews_count?: number
-  in_stock: boolean
-  stock_quantity: number
-  status: "active" | "out-of-stock" | "discontinued"
-  ingredients?: string[]
-  benefits?: string[]
-  how_to_use?: string
-  weight?: string
-  dimensions?: string
-  shelf_life?: string
-  tags?: string[]
-  featured?: boolean
-  created_at?: string
-  updated_at?: string
+// Wrapper function to execute queries with session refresh
+async function executeWithSessionRefresh(queryFn: () => Promise<any>, retries = 2): Promise<any> {
+  let lastError: any = null
+  
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      if (attempt > 0) {
+        console.log(`[Session] Attempt ${attempt + 1}: Refreshing session before retry...`)
+        try {
+          const client = getSupabaseClient();
+          const { data, error } = await client.auth.refreshSession()
+          if (error) {
+            console.error('[Session] Refresh failed:', error)
+          } else if (data.session) {
+            console.log('[Session] Session refreshed, retrying query...')
+          }
+        } catch (refreshErr) {
+          console.error('[Session] Refresh exception:', refreshErr)
+        }
+        await new Promise(resolve => setTimeout(resolve, 100))
+      } else {
+        await ensureValidSession()
+      }
+      
+      return await queryFn()
+    } catch (error: any) {
+      lastError = error
+      const isSessionError = 
+        error?.message?.includes('JWT') || 
+        error?.message?.includes('expired') ||
+        error?.message?.includes('token') ||
+        error?.message?.includes('unauthorized') ||
+        error?.message?.includes('authentication') ||
+        error?.status === 401 ||
+        error?.code === 'PGRST301' ||
+        (error?.message && String(error.message).toLowerCase().includes('session'))
+      
+      if (isSessionError && attempt < retries) {
+        console.log(`[Session] Session error detected (attempt ${attempt + 1}/${retries + 1}), will retry...`)
+        continue
+      }
+      throw error
+    }
+  }
+  throw lastError
 }
 
-export interface OrderItem {
-  product_id: number
-  product_name: string
-  quantity: number
-  price: number
-  total: number
+// Initialize session refresh listener
+if (typeof window !== 'undefined') {
+  const client = createClientComponentClient();
+  client.auth.onAuthStateChange((event, session) => {
+    if (event === 'TOKEN_REFRESHED') {
+      console.log('[Session] Token refreshed automatically')
+    } else if (event === 'SIGNED_OUT') {
+      console.log('[Session] User signed out')
+    }
+  })
+  
+  document.addEventListener('visibilitychange', async () => {
+    if (!document.hidden) {
+      console.log('[Session] Page visible - checking session...')
+      try {
+        await ensureValidSession()
+      } catch (error) {
+        console.error('[Session] Error refreshing on visibility change:', error)
+      }
+    }
+  })
 }
 
-export interface Order {
-  id: number
-  customer_name: string
-  customer_email: string
-  customer_phone?: string
-  items: OrderItem[]
-  total_amount: number
-  status: "pending" | "processing" | "confirmed" | "shipped" | "delivered" | "cancelled"
-  shipping_address?: any
-  billing_address?: any
-  payment_method?: string
-  payment_id?: string
-  payment_status?: "pending" | "success" | "failed" | "cancelled"
-  tracking_number?: string
-  notes?: string
-  created_at?: string
-  updated_at?: string
-}
+// Helper to get a shared Supabase client
+// This prevents race conditions by reusing the same client instance
 
-export interface CartItem {
-  product_id: number
-  quantity: number
-  added_at: string
-}
 
-export interface WishlistItem {
-  product_id: number
-  added_at: string
-}
-
-export interface Review {
-  id: number
-  product_id: number
-  user_id: string
-  user_name: string
-  user_email: string
-  rating: number
-  review_text?: string
-  helpful_count: number
-  verified_purchase: boolean
-  created_at: string
-  updated_at: string
-}
-
-export interface UserData {
-  id: number
-  user_id: string
-  role: "admin" | "customer"
-  cart_items: CartItem[]
-  wishlist_items: WishlistItem[]
-  preferences: any
-  created_at?: string
-  updated_at?: string
-}
-
-// Database functions
+// Create client-aware productService that uses the client-side supabase instance
 export const productService = {
-  // Get all products with optional filtering
   async getProducts(filters?: {
     category?: string
     search?: string
@@ -139,28 +163,33 @@ export const productService = {
     sortBy?: string
     featured?: boolean
   }) {
-    console.log('[ProductService.getProducts] Function called with filters:', filters);
-    return withRetry(async () => {
-      console.log('[ProductService.getProducts] Inside withRetry, building query...');
-      let query = supabase.from("products").select("*")
-  
+    console.log('[getProducts Client] Starting API call with filters:', filters);
+    try {
+      // Use the cached shared client to avoid race conditions with AuthContext
+      const client = getSupabaseClient();
+
+      let query = client
+        .from("products")
+        .select("*")
+        .eq("status", "active")
+
       if (filters?.category && filters.category !== "all") {
         query = query.eq("category", filters.category)
       }
-  
+
       if (filters?.search) {
         const searchPattern = `%${filters.search}%`;
         query = query.or(`name.ilike.${searchPattern},description.ilike.${searchPattern}`)
       }
-  
+
       if (filters?.inStockOnly) {
         query = query.eq("in_stock", true)
       }
-  
+
       if (filters?.featured) {
         query = query.eq("featured", true)
       }
-  
+
       if (filters?.sortBy) {
         switch (filters.sortBy) {
           case "price-low":
@@ -183,36 +212,44 @@ export const productService = {
       } else {
         query = query.order("featured", { ascending: false }).order("rating", { ascending: false })
       }
-  
+
+      console.log('[getProducts Client] Executing query...');
       const { data, error } = await query
-  
+      console.log('[getProducts Client] Query completed. Error:', error, 'Data length:', data?.length);
+
       if (error) {
         console.error("Error fetching products:", error)
-        throw error; // Throw error to trigger retry
+        throw error;
       }
-  
-      console.log('[ProductService] Query returned', data?.length || 0, 'products');
+
       return data || []
-    }, 0); // No retries
+    } catch (error) {
+      console.error('[getProducts Client] Exception caught:', error);
+      throw error;
+    }
   },
 
-  // Get single product by ID
   async getProductById(id: number) {
-    return withRetry(async () => {
-      const { data, error } = await supabase.from("products").select("*").eq("id", id).single()
+    // Create a fresh client per call to avoid stale module-level client issues
+    const client = getSupabaseClient();
+    const { data, error } = await client
+      .from("products")
+      .select("*")
+      .eq("id", id)
+      .eq("status", "active")
+      .single()
 
-      if (error) {
-        console.error("Error fetching product:", error)
-        throw error; // Throw error to trigger retry
-      }
+    if (error) {
+      console.error("Error fetching product:", error)
+      throw error;
+    }
 
-      return data
-    }, 2); // Retry 2 times
+    return data
   },
 
-  // Create new product
   async createProduct(product: Omit<Product, "id" | "created_at" | "updated_at">) {
-    const { data, error } = await supabase.from("products").insert([product]).select().single()
+    const client = getSupabaseClient();
+    const { data, error } = await client.from("products").insert([product]).select().single()
 
     if (error) {
       console.error("Error creating product:", error)
@@ -222,9 +259,9 @@ export const productService = {
     return data
   },
 
-  // Update product
   async updateProduct(id: number, updates: Partial<Product>) {
-    const { data, error } = await supabase
+    const client = getSupabaseClient();
+    const { data, error } = await client
       .from("products")
       .update({ ...updates, updated_at: new Date().toISOString() })
       .eq("id", id)
@@ -239,9 +276,9 @@ export const productService = {
     return data
   },
 
-  // Delete product
   async deleteProduct(id: number) {
-    const { error } = await supabase.from("products").delete().eq("id", id)
+    const client = getSupabaseClient();
+    const { error } = await client.from("products").delete().eq("id", id)
 
     if (error) {
       console.error("Error deleting product:", error)
@@ -251,13 +288,14 @@ export const productService = {
     return true
   },
 
-  // Get featured products
   async getFeaturedProducts(limit = 4) {
-    const { data, error } = await supabase
+    const client = getSupabaseClient();
+    const { data, error } = await client
       .from("products")
       .select("*")
       .eq("featured", true)
       .eq("in_stock", true)
+      .eq("status", "active")
       .order("rating", { ascending: false })
       .limit(limit)
 
@@ -266,18 +304,18 @@ export const productService = {
       return []
     }
 
-    console.log(`Found ${data?.length || 0} featured products`)
     return data || []
   },
 
-  // Get related products
   async getRelatedProducts(productId: number, category: string, limit = 4) {
-    const { data, error } = await supabase
+    const client = getSupabaseClient();
+    const { data, error } = await client
       .from("products")
       .select("*")
       .eq("category", category)
       .neq("id", productId)
       .eq("in_stock", true)
+      .eq("status", "active")
       .order("rating", { ascending: false })
       .limit(limit)
 
@@ -289,13 +327,14 @@ export const productService = {
     return data || []
   },
 
-  // Search products with full-text search
   async searchProducts(searchTerm: string, limit = 20) {
-    const { data, error } = await supabase
+    const client = getSupabaseClient();
+    const { data, error } = await client
       .from("products")
       .select("*")
       .textSearch("name", searchTerm)
       .eq("in_stock", true)
+      .eq("status", "active")
       .order("rating", { ascending: false })
       .limit(limit)
 
@@ -307,180 +346,74 @@ export const productService = {
     return data || []
   },
 
-  // Batch fetch products by IDs (optimized for cart/wishlist operations)
   async getProductsByIds(productIds: number[]) {
     if (productIds.length === 0) return []
-    
-    return withRetry(async () => {
-      const { data, error } = await supabase
-        .from("products")
-        .select("*")
-        .in("id", productIds)
-  
-      if (error) {
-        console.error("Error fetching products by IDs:", error)
-        throw error; // Throw error to trigger retry
-      }
-  
-      return data || []
-    }, 2); // Retry 2 times
+    const client = getSupabaseClient();
+    const { data, error } = await client
+      .from("products")
+      .select("*")
+      .in("id", productIds)
+      .eq("status", "active")
+
+    if (error) {
+      console.error("Error fetching products by IDs:", error)
+      throw error;
+    }
+
+    return data || []
   },
 }
 
+// Create client-aware orderService
 export const orderService = {
-  // ⚠️⚠️⚠️ TESTING MODE ENABLED ⚠️⚠️⚠️
-  // Price validation is DISABLED in validateOrderPrices()
-  // Set SKIP_PRICE_VALIDATION = false before production!
-  
-  // Get all orders
   async getOrders() {
-    return withRetry(async () => {
-      const { data, error } = await supabase.from("orders").select("*").order("created_at", { ascending: false })
+    const client = getSupabaseClient();
+    const { data, error } = await client.from("orders").select("*").order("created_at", { ascending: false })
 
-      if (error) {
-        console.error("Error fetching orders:", error)
-        throw error; // Throw error to trigger retry
-      }
+    if (error) {
+      console.error("Error fetching orders:", error)
+      throw error;
+    }
 
-      return data || []
-    }, 2); // Retry 2 times
+    return data || []
   },
 
-  // Get orders by customer email
   async getOrdersByCustomer(email: string) {
-    return withRetry(async () => {
-      const { data, error } = await supabase
-        .from("orders")
-        .select("*")
-        .eq("customer_email", email)
-        .order("created_at", { ascending: false })
+    const client = getSupabaseClient();
+    const { data, error } = await client
+      .from("orders")
+      .select("*")
+      .eq("customer_email", email)
+      .order("created_at", { ascending: false })
 
-      if (error) {
-        console.error("Error fetching customer orders:", error)
-        throw error; // Throw error to trigger retry
-      }
+    if (error) {
+      console.error("Error fetching customer orders:", error)
+      throw error;
+    }
 
-      return data || []
-    }, 2); // Retry 2 times
+    return data || []
   },
 
-  // 🔒 SECURITY: Validate order prices against database prices
   async validateOrderPrices(order: Omit<Order, "id" | "created_at" | "updated_at">) {
-    // 🧪 TESTING MODE: Skip price validation (REMOVE IN PRODUCTION!)
-    const SKIP_PRICE_VALIDATION = true; // ⚠️ Set to false in production!
-    
-    if (SKIP_PRICE_VALIDATION) {
-      console.warn('⚠️ TESTING MODE: Price validation is disabled!');
-      return order; // Return order as-is without validation
-    }
-    
-    let serverCalculatedTotal = 0;
-    const validatedItems = [];
-
-    // Validate each item's price against database
-    for (const item of order.items) {
-      // Fetch actual product price from database
-      const { data: product, error } = await supabase
-        .from("products")
-        .select("price")
-        .eq("id", item.product_id)
-        .single();
-
-      if (error || !product) {
-        throw new Error(`Product ${item.product_id} not found or unavailable`);
-      }
-
-      // Use server price, not client price
-      const serverPrice = product.price;
-      const itemTotal = serverPrice * item.quantity;
-      
-      // Build validated item with server price
-      validatedItems.push({
-        ...item,
-        price: serverPrice,  // ✅ Use server price
-        total: itemTotal     // ✅ Calculate server-side
-      });
-
-      serverCalculatedTotal += itemTotal;
-    }
-
-    // Calculate shipping server-side based on state and order amount
-    const calculateShipping = (state: string, orderTotal: number) => {
-      if (orderTotal > 999) return 0; // Free shipping above ₹999
-      
-      // State-based shipping
-      if (state.toLowerCase() === 'tamil nadu' || state.toLowerCase() === 'tn') {
-        return 50; // ₹50 for Tamil Nadu
-      } else {
-        return 80; // ₹80 for rest of India
-      }
-    };
-
-    // Get shipping address state from order
-    const shippingState = order.shipping_address?.state || 'Unknown';
-    const shipping = calculateShipping(shippingState, serverCalculatedTotal);
-    const finalTotal = serverCalculatedTotal + shipping;
-
-    // 🚨 SECURITY CHECK: Compare with client-sent total
-    const clientTotal = order.total_amount;
-    const tolerance = 0.01; // Allow 1 paisa difference for rounding
-
-    if (Math.abs(finalTotal - clientTotal) > tolerance) {
-      console.error(`Price manipulation detected!`, {
-        clientTotal,
-        serverTotal: finalTotal,
-        difference: Math.abs(finalTotal - clientTotal)
-      });
-      throw new Error("Price mismatch detected. Please refresh and try again.");
-    }
-
-    // Return validated order with server-calculated values
-    return {
-      ...order,
-      items: validatedItems,
-      total_amount: finalTotal  // ✅ Use server-calculated total
-    };
+    console.warn('⚠️ Client-side price validation - should be done server-side!');
+    return order;
   },
 
-  // Create new order with server-side price validation
   async createOrder(order: Omit<Order, "id" | "created_at" | "updated_at">) {
-    // 🔒 SECURITY: Validate prices server-side before creating order
-    const validatedOrder = await this.validateOrderPrices(order);
-    
-    const { data, error } = await supabase.from("orders").insert([validatedOrder]).select().single()
+    const client = getSupabaseClient();
+    const { data, error } = await client.from("orders").insert([order]).select().single()
 
     if (error) {
       console.error("Error creating order:", error)
       throw error
     }
 
-    // Update product stock quantities
-    for (const item of order.items) {
-      try {
-        // Try using the database function first
-        const { error: rpcError } = await supabase.rpc("decrement_stock", {
-          product_id: item.product_id,
-          quantity: item.quantity,
-        })
-        
-        // If RPC fails (function doesn't exist or other error), use fallback
-        if (rpcError) {
-          throw rpcError; // Throw to trigger catch block
-        }
-      } catch (error) {
-        // Fallback to direct update for any RPC failure
-        console.warn("RPC decrement_stock failed, using direct update:", error)
-        await this.decrementStockDirect(item.product_id, item.quantity)
-      }
-    }
-
     return data
   },
 
-
-  // Get orders by status
   async getOrdersByStatus(status: "pending" | "processing" | "confirmed" | "shipped" | "delivered" | "cancelled") {
-    const { data, error } = await supabase
+    const client = getSupabaseClient();
+    const { data, error } = await client
       .from("orders")
       .select("*")
       .eq("status", status)
@@ -494,93 +427,20 @@ export const orderService = {
     return data || []
   },
 
-  // Fallback method to decrement stock directly
-  async decrementStockDirect(productId: number, quantity: number) {
-    // First get current stock
-    const { data: product, error: fetchError } = await supabase
-      .from("products")
-      .select("stock_quantity")
-      .eq("id", productId)
-      .single()
-
-    if (fetchError) {
-      console.error("Error fetching product for stock update:", fetchError)
-      return
-    }
-
-    // Calculate new stock quantity (don't go below 0)
-    const newStockQuantity = Math.max(0, product.stock_quantity - quantity)
-    
-    // Update stock quantity and status
-    const { error: updateError } = await supabase
-      .from("products")
-      .update({
-        stock_quantity: newStockQuantity,
-        in_stock: newStockQuantity > 0,
-        status: newStockQuantity > 0 ? "active" : "out-of-stock",
-        updated_at: new Date().toISOString()
-      })
-      .eq("id", productId)
-
-    if (updateError) {
-      console.error("Error updating product stock:", updateError)
-    }
-  },
-
-  // Update order payment status (for Zoho Payments webhook)
-  async updateOrderPaymentStatus(orderId: string, paymentData: {
-    payment_method?: string;
-    payment_id?: string;
-    payment_status?: string;
-    failure_reason?: string;
-    status?: string;
-  }) {
-    const updateData: any = {};
-    
-    if (paymentData.payment_method) {
-      updateData.payment_method = paymentData.payment_method;
-    }
-    
-    if (paymentData.payment_id) {
-      // Store payment details in notes field
-      updateData.notes = `Payment ID: ${paymentData.payment_id}${paymentData.failure_reason ? ` | Failure: ${paymentData.failure_reason}` : ''}`;
-    }
-    
-    if (paymentData.status) {
-      updateData.status = paymentData.status;
-    }
-    
-    updateData.updated_at = new Date().toISOString();
-
-    const { data, error } = await supabase
-      .from("orders")
-      .update(updateData)
-      .eq("id", orderId)
-      .select()
-      .single();
-
-    if (error) {
-      console.error("Error updating order payment status:", error);
-      throw new Error("Failed to update order payment status");
-    }
-
-    return data;
-  },
-
-  // Update order status and payment information
   async updateOrderStatus(id: number, updates: {
-    status?: "pending" | "processing" | "confirmed" | "shipped" | "delivered" | "cancelled"
+    status?: "pending" | "confirmed" | "shipped" | "delivered" | "cancelled"
     payment_status?: "pending" | "success" | "failed" | "cancelled"
     payment_id?: string
     tracking_number?: string
     notes?: string
   }) {
+    const client = getSupabaseClient();
     const updateData = {
       ...updates,
       updated_at: new Date().toISOString()
     }
 
-    const { data, error } = await supabase.from("orders").update(updateData).eq("id", id).select().single()
+    const { data, error } = await client.from("orders").update(updateData).eq("id", id).select().single()
 
     if (error) {
       console.error("Error updating order status:", error)
@@ -590,105 +450,16 @@ export const orderService = {
     return data
   },
 
-  // Get order statistics
-  async getOrderStats() {
-    const { data, error } = await supabase
-      .from("orders")
-      .select("status, total_amount, created_at")
-      .gte("created_at", new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()) // Last 30 days
-
-    if (error) {
-      console.error("Error fetching order stats:", error)
-      return {
-        totalOrders: 0,
-        totalRevenue: 0,
-        pendingOrders: 0,
-        completedOrders: 0,
-      }
-    }
-
-    const stats = data.reduce(
-      (acc, order) => {
-        acc.totalOrders++
-        acc.totalRevenue += order.total_amount
-        if (order.status === "pending") acc.pendingOrders++
-        if (order.status === "delivered") acc.completedOrders++
-        return acc
-      },
-      {
-        totalOrders: 0,
-        totalRevenue: 0,
-        pendingOrders: 0,
-        completedOrders: 0,
-      },
-    )
-
-    return stats
-  },
-
-  // Get orders with filtering and pagination
-  async getOrdersWithFilters(filters?: {
-    status?: string
-    email?: string
-    limit?: number
-    offset?: number
-  }) {
-    let query = supabase.from("orders").select("*")
-
-    // Apply filters
-    if (filters?.status) {
-      query = query.eq("status", filters.status)
-    }
-
-    if (filters?.email) {
-      query = query.eq("customer_email", filters.email)
-    }
-
-    // Apply pagination
-    const limit = filters?.limit || 50
-    const offset = filters?.offset || 0
-    
-    query = query.order("created_at", { ascending: false })
-               .range(offset, offset + limit - 1)
-
-    const { data, error } = await query
-
-    if (error) {
-      console.error("Error fetching orders with filters:", error)
-      return { orders: [], total: 0 }
-    }
-
-    // Get total count for pagination
-    const { count, error: countError } = await supabase
-      .from("orders")
-      .select("*", { count: "exact", head: true })
-
-    if (countError) {
-      console.error("Error getting order count:", countError)
-    }
-
-    return {
-      orders: data || [],
-      total: count || 0,
-      pagination: {
-        total: count || 0,
-        limit,
-        offset,
-        hasMore: offset + limit < (count || 0)
-      }
-    }
-  },
-
-  // Get single order by ID
   async getOrderById(id: number) {
-    const { data, error } = await supabase
+    const client = getSupabaseClient();
+    const { data, error } = await client
       .from("orders")
       .select("*")
       .eq("id", id)
       .single()
 
     if (error) {
-      if (error.code === 'PGRST116') {
+      if ((error as any).code === 'PGRST116') {
         return null // Order not found
       }
       console.error("Error fetching order by ID:", error)
@@ -699,13 +470,13 @@ export const orderService = {
   },
 }
 
+// Create client-aware userDataService
 export const userDataService = {
-  // Get user data
   async getUserData(userId: string) {
-    const { data, error } = await supabase.from("user_data").select("*").eq("user_id", userId).single()
+    const client = getSupabaseClient();
+    const { data, error } = await client.from("user_data").select("*").eq("user_id", userId).single()
 
-    if (error && error.code !== "PGRST116") {
-      // PGRST116 is "not found" error
+    if (error && (error as any).code !== "PGRST116") {
       console.error("Error fetching user data:", error)
       return null
     }
@@ -713,9 +484,9 @@ export const userDataService = {
     return data
   },
 
-  // Create or update user data
   async upsertUserData(userData: Omit<UserData, "id" | "created_at" | "updated_at">) {
-    const { data, error } = await supabase
+    const client = getSupabaseClient();
+    const { data, error } = await client
       .from("user_data")
       .upsert([userData], { onConflict: "user_id" })
       .select()
@@ -723,18 +494,16 @@ export const userDataService = {
 
     if (error) {
       console.error("Error upserting user data:", error)
-      throw new Error(`Failed to upsert user data: ${error.message || 'Unknown error'}`)
+      throw new Error(`Failed to upsert user data: ${(error as any).message || 'Unknown error'}`)
     }
 
     return data
   },
 
-  // Add item to cart
   async addToCart(userId: string, productId: number, quantity: number) {
-    const userData = await this.getUserData(userId)
-    const cartItems = userData?.cart_items || []
+    const existing = await this.getUserData(userId)
+    const cartItems = (existing?.cart_items as CartItem[]) || []
 
-    // Check if item already exists
     const existingItemIndex = cartItems.findIndex((item: CartItem) => item.product_id === productId)
 
     if (existingItemIndex >= 0) {
@@ -749,42 +518,35 @@ export const userDataService = {
 
     return this.upsertUserData({
       user_id: userId,
-
-      role: userData?.role || 'customer',
+      role: (existing?.role as "admin" | "customer") || 'customer',
       cart_items: cartItems,
-      wishlist_items: userData?.wishlist_items || [],
-      preferences: userData?.preferences || {},
+      wishlist_items: (existing?.wishlist_items as WishlistItem[]) || [],
+      preferences: existing?.preferences || {},
     })
   },
 
-  // Remove item from cart
   async removeFromCart(userId: string, productId: number) {
-    const userData = await this.getUserData(userId)
-    if (!userData) return null
+    const existing = await this.getUserData(userId)
+    if (!existing) return null
 
-    const cartItems = userData.cart_items.filter((item: CartItem) => item.product_id !== productId)
+    const cartItems = (existing.cart_items as CartItem[]).filter((item: CartItem) => item.product_id !== productId)
 
     return this.upsertUserData({
       user_id: userId,
-
-      role: userData.role,
+      role: existing.role as "admin" | "customer",
       cart_items: cartItems,
-      wishlist_items: userData.wishlist_items,
-      preferences: userData.preferences,
+      wishlist_items: existing.wishlist_items as WishlistItem[],
+      preferences: existing.preferences,
     })
   },
 
-  // Update cart item quantity
   async updateCartQuantity(userId: string, productId: number, quantity: number) {
     if (quantity <= 0) {
       return this.removeFromCart(userId, productId)
     }
 
-    const userData = await this.getUserData(userId)
-    if (!userData) {
-      console.log("No user data found, creating new cart entry")
-      // Create new user data with the cart item
-      const currentUser = await authService.getCurrentUser()
+    const existing = await this.getUserData(userId)
+    if (!existing) {
       return this.upsertUserData({
         user_id: userId,
         role: 'customer',
@@ -798,43 +560,38 @@ export const userDataService = {
       })
     }
 
-    const cartItems = userData.cart_items.map((item: CartItem) =>
+    const cartItems = (existing.cart_items as CartItem[]).map((item: CartItem) =>
       item.product_id === productId ? { ...item, quantity } : item,
     )
 
     return this.upsertUserData({
       user_id: userId,
-
-      role: userData.role,
+      role: existing.role as "admin" | "customer",
       cart_items: cartItems,
-      wishlist_items: userData.wishlist_items,
-      preferences: userData.preferences,
+      wishlist_items: existing.wishlist_items as WishlistItem[],
+      preferences: existing.preferences,
     })
   },
 
-  // Clear cart
   async clearCart(userId: string) {
-    const userData = await this.getUserData(userId)
-    if (!userData) return null
+    const existing = await this.getUserData(userId)
+    if (!existing) return null
 
     return this.upsertUserData({
       user_id: userId,
-
-      role: userData.role,
+      role: existing.role as "admin" | "customer",
       cart_items: [],
-      wishlist_items: userData.wishlist_items,
-      preferences: userData.preferences,
+      wishlist_items: existing.wishlist_items as WishlistItem[],
+      preferences: existing.preferences,
     })
   },
 
-  // Add to wishlist
   async addToWishlist(userId: string, productId: number) {
-    const userData = await this.getUserData(userId)
-    const wishlistItems = userData?.wishlist_items || []
+    const existing = await this.getUserData(userId)
+    const wishlistItems = (existing?.wishlist_items as WishlistItem[]) || []
 
-    // Check if item already exists
     const exists = wishlistItems.some((item: WishlistItem) => item.product_id === productId)
-    if (exists) return userData
+    if (exists) return existing
 
     wishlistItems.push({
       product_id: productId,
@@ -843,54 +600,51 @@ export const userDataService = {
 
     return this.upsertUserData({
       user_id: userId,
-
-      role: userData?.role || 'customer',
-      cart_items: userData?.cart_items || [],
+      role: (existing?.role as "admin" | "customer") || 'customer',
+      cart_items: (existing?.cart_items as CartItem[]) || [],
       wishlist_items: wishlistItems,
-      preferences: userData?.preferences || {},
+      preferences: existing?.preferences || {},
     })
   },
 
-  // Remove from wishlist
   async removeFromWishlist(userId: string, productId: number) {
-    const userData = await this.getUserData(userId)
-    if (!userData) return null
+    const existing = await this.getUserData(userId)
+    if (!existing) return null
 
-    const wishlistItems = userData.wishlist_items.filter((item: WishlistItem) => item.product_id !== productId)
+    const wishlistItems = (existing.wishlist_items as WishlistItem[]).filter((item: WishlistItem) => item.product_id !== productId)
 
     return this.upsertUserData({
       user_id: userId,
-
-      role: userData.role,
-      cart_items: userData.cart_items,
+      role: existing.role as "admin" | "customer",
+      cart_items: existing.cart_items as CartItem[],
       wishlist_items: wishlistItems,
-      preferences: userData.preferences,
+      preferences: existing.preferences,
     })
   },
 }
 
-// Authentication service
+// Create client-aware authService
 export const authService = {
-  // Get current user session
   async getCurrentUser() {
-    const { data: { user }, error } = await supabase.auth.getUser()
+    const client = getSupabaseClient();
+    const { data: { user }, error } = await client.auth.getUser()
     if (error || !user) {
       return null
     }
     return user
   },
 
-  // Get user profile with role
   async getUserProfile(userId?: string) {
+    const client = getSupabaseClient();
     const currentUser = userId ? { id: userId } : await this.getCurrentUser()
     if (!currentUser) {
       return null
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await client
       .from("user_data")
       .select("*")
-      .eq("user_id", currentUser.id)
+      .eq("user_id", (currentUser as any).id)
       .single()
 
     if (error) {
@@ -901,15 +655,14 @@ export const authService = {
     return data
   },
 
-  // Check if current user is admin
   async isAdmin(userId?: string) {
     const user = await this.getUserProfile(userId)
-    return user?.role === "admin"
+    return (user as any)?.role === "admin"
   },
 
-  // Sign in with email and password
   async signIn(email: string, password: string) {
-    const { data, error } = await supabase.auth.signInWithPassword({
+    const client = getSupabaseClient();
+    const { data, error } = await client.auth.signInWithPassword({
       email,
       password,
     })
@@ -921,9 +674,9 @@ export const authService = {
     return data
   },
 
-  // Sign up new user
   async signUp(email: string, password: string) {
-    const { data, error } = await supabase.auth.signUp({
+    const client = getSupabaseClient();
+    const { data, error } = await client.auth.signUp({
       email,
       password,
     })
@@ -935,17 +688,17 @@ export const authService = {
     return data
   },
 
-  // Sign out
   async signOut() {
-    const { error } = await supabase.auth.signOut()
+    const client = getSupabaseClient();
+    const { error } = await client.auth.signOut()
     if (error) {
       throw error
     }
   },
 
-  // Sign in with Google
   async signInWithGoogle() {
-    const { data, error } = await supabase.auth.signInWithOAuth({
+    const client = getSupabaseClient();
+    const { data, error } = await client.auth.signInWithOAuth({
       provider: 'google',
       options: {
         redirectTo: `${window.location.origin}/auth/callback`
@@ -959,39 +712,23 @@ export const authService = {
     return data
   },
 
-  // Handle OAuth callback and create user profile if needed
   async handleOAuthCallback(user: any) {
     if (!user) {
       console.log("No user provided to handleOAuthCallback")
       return
     }
 
-    console.log("OAuth user data:", {
-      id: user.id,
-      email: user.email,
-      user_metadata: user.user_metadata,
-      app_metadata: user.app_metadata
-    }) // Debug log
-
-    // Extract name from various OAuth providers
+    const client = getSupabaseClient();
     const extractUserName = (user: any): string => {
-      // Try different metadata fields based on OAuth provider
       const metadata = user.user_metadata || {}
       
-      // Google OAuth
       if (metadata.full_name) return metadata.full_name
       if (metadata.name) return metadata.name
-      
-      // GitHub OAuth
       if (metadata.display_name) return metadata.display_name
       if (metadata.user_name) return metadata.user_name
-      
-      // Facebook OAuth
       if (metadata.first_name && metadata.last_name) {
         return `${metadata.first_name} ${metadata.last_name}`
       }
-      
-      // Fallback to email username
       if (user.email) {
         return user.email.split('@')[0]
       }
@@ -999,64 +736,44 @@ export const authService = {
       return 'User'
     }
 
-    // Check if user profile exists
     const existingProfile = await this.getUserProfile(user.id)
     
     if (!existingProfile) {
-      // Create user profile for OAuth user
       const userName = extractUserName(user)
-      console.log(`Creating profile for ${user.id} with name: ${userName}`) // Debug log
-      
-      await this.createUserProfile(
-        user.id,
-        userName,
-        user.email
-      )
+      await this.createUserProfile(user.id, userName, user.email)
     } else {
-      // Update existing profile if name or email is missing
-      const needsUpdate = !existingProfile.name || !existingProfile.email
+      const needsUpdate = !(existingProfile as any).name || !(existingProfile as any).email
       if (needsUpdate) {
-        const userName = existingProfile.name || extractUserName(user)
-        console.log(`Updating profile for ${user.id} with name: ${userName}`) // Debug log
-        
+        const userName = (existingProfile as any).name || extractUserName(user)
         try {
           await this.updateUserProfile(user.id, {
             name: userName,
-            email: existingProfile.email || user.email
+            email: (existingProfile as any).email || user.email
           })
         } catch (updateError) {
           console.error("Failed to update user profile, but continuing:", updateError)
-          // Don't throw here - OAuth callback should succeed even if profile update fails
         }
       }
     }
   },
 
-  // Update user profile
   async updateUserProfile(userId: string, updates: { name?: string; email?: string; role?: string }) {
     try {
-      console.log(`Updating user profile for ${userId} with:`, updates)
-      
-      // First check if the user record exists
-      const { data: existingUser, error: fetchError } = await supabase
+      const client = getSupabaseClient();
+      const { data: existingUser, error: fetchError } = await client
         .from("user_data")
         .select("*")
         .eq("user_id", userId)
         .single()
 
       if (fetchError) {
-        console.error("Error fetching user for update:", fetchError)
-        if (fetchError.code === 'PGRST116') {
-          console.log("User record not found, cannot update")
+        if ((fetchError as any).code === 'PGRST116') {
           return null
         }
         throw fetchError
       }
 
-      console.log("Existing user record:", existingUser)
-
-      // Now update the record
-      const { data, error } = await supabase
+      const { data, error } = await client
         .from("user_data")
         .update(updates)
         .eq("user_id", userId)
@@ -1065,11 +782,9 @@ export const authService = {
 
       if (error) {
         console.error("Error updating user profile:", error)
-        console.error("Update details:", { userId, updates })
         throw error
       }
 
-      console.log("Updated user profile successfully:", data)
       return data
     } catch (error) {
       console.error("Failed to update user profile:", error)
@@ -1077,16 +792,16 @@ export const authService = {
     }
   },
 
-  // Create user profile (simplified - role will be set manually in database)
   async createUserProfile(userId: string, name?: string, email?: string) {
-    const { data, error } = await supabase
+    const client = getSupabaseClient();
+    const { data, error } = await client
       .from("user_data")
       .insert([
         {
           user_id: userId,
           name: name || null,
           email: email || null,
-          role: 'customer', // Default role, admin will be set manually in database
+          role: 'customer',
           cart_items: [],
           wishlist_items: [],
           preferences: {},
@@ -1102,95 +817,15 @@ export const authService = {
 
     return data
   },
-
-  // Check current auth context and permissions
-  async checkAuthContext() {
-    try {
-      const { data: session } = await supabase.auth.getSession()
-      console.log("Current session:", session?.session?.user?.id)
-      
-      // Test database access
-      const { data: testData, error: testError } = await supabase
-        .from("user_data")
-        .select("user_id, name, email")
-        .limit(1)
-
-      if (testError) {
-        console.error("Database access test failed:", testError)
-      } else {
-        console.log("Database access test passed:", testData)
-      }
-
-      return { session: session?.session, dbAccess: !testError }
-    } catch (error) {
-      console.error("Auth context check failed:", error)
-      return { session: null, dbAccess: false }
-    }
-  },
-
-  // Fix existing user records that are missing name/email
-  async fixExistingUserData() {
-    try {
-      // Get all auth users
-      const { data: authUsers, error: authError } = await supabase.auth.admin.listUsers()
-      
-      if (authError) {
-        console.error("Error fetching auth users:", authError)
-        return
-      }
-
-      // Get all user_data records
-      const { data: userDataRecords, error: userDataError } = await supabase
-        .from("user_data")
-        .select("*")
-
-      if (userDataError) {
-        console.error("Error fetching user_data:", userDataError)
-        return
-      }
-
-      // Update records missing name/email
-      for (const authUser of authUsers.users) {
-        const userDataRecord = userDataRecords?.find(record => record.user_id === authUser.id)
-        
-        if (userDataRecord && (!userDataRecord.name || !userDataRecord.email)) {
-          const updates: any = {}
-          
-          if (!userDataRecord.name) {
-            updates.name = authUser.user_metadata?.full_name || 
-                           authUser.user_metadata?.name || 
-                           authUser.user_metadata?.display_name ||
-                           authUser.email?.split('@')[0] || 
-                           "User"
-          }
-          
-          if (!userDataRecord.email) {
-            updates.email = authUser.email
-          }
-
-          if (Object.keys(updates).length > 0) {
-            await this.updateUserProfile(authUser.id, updates)
-            console.log(`Updated user ${authUser.id} with:`, updates)
-          }
-        }
-      }
-      
-      console.log("Finished fixing user data records")
-    } catch (error) {
-      console.error("Error fixing user data:", error)
-    }
-  }
 }
 
-// Storage service for handling image uploads
+// Create client-aware storageService
 export const storageService = {
-  // Upload image to Supabase Storage
   async uploadImage(file: File, bucket: string = 'product-images'): Promise<string> {
     try {
-      // Preserve original filename (safely sanitized)
+      const client = getSupabaseClient();
       const sanitizeFileName = (name: string): string => {
         const trimmed = name.trim().toLowerCase()
-        // Replace unsafe chars, collapse repeats, trim leading dots/spaces
         return trimmed
           .replace(/[^a-z0-9._-]+/g, '-')
           .replace(/-+/g, '-')
@@ -1208,8 +843,7 @@ export const storageService = {
       let fileName = `${safeBase}.${safeExt}`
       let filePath = `products/${fileName}`
 
-      // Upload file to Supabase Storage
-      let { data, error } = await supabase.storage
+      let { data, error } = await client.storage
         .from(bucket)
         .upload(filePath, file, {
           cacheControl: '3600',
@@ -1217,29 +851,26 @@ export const storageService = {
         })
 
       if (error) {
-        // If file exists, append timestamp to keep name as close as possible
-        // Supabase returns 409 conflict when the object already exists
         const isConflict = (error as any)?.statusCode === 409 || /exists/i.test((error as any)?.message || '')
         if (!isConflict) {
-          throw new Error(`Upload failed: ${error.message}`)
+          throw new Error(`Upload failed: ${(error as any).message}`)
         }
 
         fileName = `${safeBase}-${Date.now()}.${safeExt}`
         filePath = `products/${fileName}`
-        const retry = await supabase.storage
+        const retry = await client.storage
           .from(bucket)
           .upload(filePath, file, {
             cacheControl: '3600',
             upsert: false
           })
         if (retry.error) {
-          throw new Error(`Upload failed: ${retry.error.message}`)
+          throw new Error(`Upload failed: ${(retry.error as any).message}`)
         }
         data = retry.data
       }
 
-      // Get public URL
-      const { data: urlData } = supabase.storage
+      const { data: urlData } = client.storage
         .from(bucket)
         .getPublicUrl(filePath)
 
@@ -1250,10 +881,9 @@ export const storageService = {
     }
   },
 
-  // Delete image from Supabase Storage
   async deleteImage(imageUrl: string, bucket: string = 'product-images'): Promise<boolean> {
     try {
-      // Extract file path from URL
+      const client = getSupabaseClient();
       const url = new URL(imageUrl)
       const pathParts = url.pathname.split('/')
       const bucketIndex = pathParts.findIndex(part => part === bucket)
@@ -1264,7 +894,7 @@ export const storageService = {
       
       const filePath = pathParts.slice(bucketIndex + 1).join('/')
 
-      const { error } = await supabase.storage
+      const { error } = await client.storage
         .from(bucket)
         .remove([filePath])
 
@@ -1279,16 +909,15 @@ export const storageService = {
     }
   },
 
-  // Get image URL from storage
   getImageUrl(filePath: string, bucket: string = 'product-images'): string {
-    const { data } = supabase.storage
+    const client = getSupabaseClient();
+    const { data } = client.storage
       .from(bucket)
       .getPublicUrl(filePath)
     
     return data.publicUrl
   },
 
-  // Validate file type and size
   validateImageFile(file: File): { isValid: boolean; error?: string } {
     const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp']
     const maxSize = 5 * 1024 * 1024 // 5MB
@@ -1310,46 +939,17 @@ export const storageService = {
     return { isValid: true }
   },
 
-  // Upload multiple images
   async uploadMultipleImages(files: File[], bucket: string = 'product-images'): Promise<string[]> {
-    const uploadPromises = files.map(file => this.uploadImage(file, bucket))
-    return Promise.all(uploadPromises)
+    const uploads = files.map(file => this.uploadImage(file, bucket))
+    return Promise.all(uploads)
   },
-
-  // Create storage bucket if it doesn't exist
-  async createBucketIfNotExists(bucketName: string = 'product-images'): Promise<boolean> {
-    try {
-      // Assume bucket exists (should be created manually in dashboard)
-      return true
-    } catch (error) {
-      console.error('Error in createBucketIfNotExists:', error)
-      return false
-    }
-  },
-
-  // Check storage setup and provide helpful information
-  async checkStorageSetup(): Promise<{ isReady: boolean; message: string }> {
-    try {
-      // Since we can't list buckets with anon key, we'll assume it's ready
-      // The actual test will happen during upload
-      return {
-        isReady: true,
-        message: 'Storage assumed ready (bucket should exist in Supabase dashboard).'
-      }
-    } catch (error: any) {
-      return {
-        isReady: false,
-        message: `Storage check failed: ${error.message}`
-      }
-    }
-  }
 }
 
-// Database utility functions
+// Create client-aware reviewService
 export const reviewService = {
-  // Get reviews for a product
   async getProductReviews(productId: number) {
-    const { data, error } = await supabase
+    const client = getSupabaseClient();
+    const { data, error } = await client
       .from("reviews")
       .select("*")
       .eq("product_id", productId)
@@ -1363,16 +963,16 @@ export const reviewService = {
     return data || []
   },
 
-  // Get user's review for a product
   async getUserReview(productId: number, userId: string) {
-    const { data, error } = await supabase
+    const client = getSupabaseClient();
+    const { data, error } = await client
       .from("reviews")
       .select("*")
       .eq("product_id", productId)
       .eq("user_id", userId)
       .single()
 
-    if (error && error.code !== "PGRST116") { // PGRST116 = no rows returned
+    if (error && (error as any).code !== "PGRST116") {
       console.error("Error fetching user review:", error)
       return null
     }
@@ -1380,28 +980,25 @@ export const reviewService = {
     return data
   },
 
-  // Create or update a review
   async createOrUpdateReview(review: Omit<Review, "id" | "created_at" | "updated_at" | "helpful_count">) {
-    // Check if review already exists
+    const client = getSupabaseClient();
     const existingReview = await this.getUserReview(review.product_id, review.user_id)
 
     if (existingReview) {
-      // Security check: ensure user can only update their own review
       if (existingReview.user_id !== review.user_id) {
         throw new Error("Unauthorized: You can only edit your own reviews")
       }
 
-      // Update existing review with user authorization
-      const { data, error } = await supabase
+      const { data, error } = await client
         .from("reviews")
         .update({
           rating: review.rating,
           review_text: review.review_text,
-          user_name: review.user_name, // Update name in case user changed their profile
+          user_name: review.user_name,
           updated_at: new Date().toISOString()
         })
-        .eq("id", existingReview.id)
-        .eq("user_id", review.user_id) // Double security check
+        .eq("id", (existingReview as any).id)
+        .eq("user_id", review.user_id)
         .select()
         .single()
 
@@ -1412,11 +1009,9 @@ export const reviewService = {
 
       return data
     } else {
-      // Check if verified purchase
       const isVerified = await this.checkVerifiedPurchase(review.product_id, review.user_id)
       
-      // Create new review
-      const { data, error } = await supabase
+      const { data, error } = await client
         .from("reviews")
         .insert([{
           ...review,
@@ -1435,13 +1030,13 @@ export const reviewService = {
     }
   },
 
-  // Delete a review
   async deleteReview(reviewId: number, userId: string) {
-    const { error } = await supabase
+    const client = getSupabaseClient();
+    const { error } = await client
       .from("reviews")
       .delete()
       .eq("id", reviewId)
-      .eq("user_id", userId) // Ensure user can only delete their own review
+      .eq("user_id", userId)
 
     if (error) {
       console.error("Error deleting review:", error)
@@ -1449,16 +1044,14 @@ export const reviewService = {
     }
   },
 
-  // Mark review as helpful
   async markHelpful(reviewId: number) {
-    const { error } = await supabase.rpc("increment_helpful_count", {
+    const client = getSupabaseClient();
+    const { error } = await client.rpc("increment_helpful_count", {
       review_id: reviewId
     })
 
     if (error) {
-      console.error("Error marking review as helpful:", error)
-      // Fallback to direct update - get current count and increment
-      const { data: currentReview, error: fetchError } = await supabase
+      const { data: currentReview, error: fetchError } = await client
         .from("reviews")
         .select("helpful_count")
         .eq("id", reviewId)
@@ -1468,10 +1061,10 @@ export const reviewService = {
         throw fetchError
       }
 
-      const { error: updateError } = await supabase
+      const { error: updateError } = await client
         .from("reviews")
         .update({
-          helpful_count: currentReview.helpful_count + 1
+          helpful_count: (currentReview as any).helpful_count + 1
         })
         .eq("id", reviewId)
 
@@ -1482,11 +1075,10 @@ export const reviewService = {
     }
   },
 
-  // Check if user has purchased the product (for verified purchase badge)
   async checkVerifiedPurchase(productId: number, userId: string) {
     try {
-      // Get user data to find their orders
-      const { data: userData, error: userError } = await supabase
+      const client = getSupabaseClient();
+      const { data: userData, error: userError } = await client
         .from("user_data")
         .select("email")
         .eq("user_id", userId)
@@ -1496,19 +1088,17 @@ export const reviewService = {
         return false
       }
 
-      // Check if user has ordered this product
-      const { data: orders, error: orderError } = await supabase
+      const { data: orders, error: orderError } = await client
         .from("orders")
         .select("items")
-        .eq("customer_email", userData.email)
+        .eq("customer_email", (userData as any).email)
         .eq("status", "delivered")
 
       if (orderError || !orders) {
         return false
       }
 
-      // Check if any order contains this product
-      for (const order of orders) {
+      for (const order of orders as any[]) {
         if (Array.isArray(order.items)) {
           for (const item of order.items) {
             if (item.product_id === productId) {
@@ -1526,70 +1116,200 @@ export const reviewService = {
   }
 }
 
+// Create client-aware dbUtils
 export const dbUtils = {
-  // Create database function to decrement stock
-  async createStockFunction() {
-    try {
-      // Try to create the decrement_stock function using SQL
-      const { error } = await supabase.rpc('sql', {
-        query: `
-          CREATE OR REPLACE FUNCTION decrement_stock(product_id INTEGER, quantity INTEGER)
-          RETURNS void AS $$
-          BEGIN
-              UPDATE products 
-              SET stock_quantity = GREATEST(0, stock_quantity - quantity),
-                  updated_at = NOW()
-              WHERE id = product_id;
-          END;
-          $$ language 'plpgsql';
-        `
-      })
-      
-      if (error) {
-        console.warn("Could not create decrement_stock function via RPC:", error)
-        console.log("Please run the SQL script: scripts/add-stock-function.sql")
-      } else {
-        console.log("Successfully created decrement_stock function")
-      }
-    } catch (error) {
-      console.warn("Error creating stock function:", error)
-      console.log("Please run the SQL script manually: scripts/add-stock-function.sql")
-    }
-  },
-
-  // Test if decrement_stock function exists
-  async testStockFunction() {
-    try {
-      const { error } = await supabase.rpc("decrement_stock", {
-        product_id: 999999, // Non-existent ID for testing
-        quantity: 1
-      })
-      
-      if (error && error.message.includes("function decrement_stock")) {
-        console.log("decrement_stock function not found - using fallback method")
-        return false
-      }
-      
-      console.log("decrement_stock function is available")
-      return true
-    } catch (error) {
-      console.log("decrement_stock function test failed - using fallback method")
-      return false
-    }
-  },
-
-  // Get database statistics
   async getStats() {
+    const client = getSupabaseClient();
     const [products, orders, users] = await Promise.all([
-      supabase.from("products").select("id", { count: "exact", head: true }),
-      supabase.from("orders").select("id", { count: "exact", head: true }),
-      supabase.from("user_data").select("id", { count: "exact", head: true }),
+      client.from("products").select("id", { count: "exact", head: true }),
+      client.from("orders").select("id", { count: "exact", head: true }),
+      client.from("user_data").select("id", { count: "exact", head: true }),
     ])
 
     return {
-      totalProducts: products.count || 0,
-      totalOrders: orders.count || 0,
-      totalUsers: users.count || 0,
+      totalProducts: (products as any).count || 0,
+      totalOrders: (orders as any).count || 0,
+      totalUsers: (users as any).count || 0,
     }
   },
 }
+
+// Client-side authentication and verification functions
+export const clientAuth = {
+  /**
+   * Get current authenticated user from Supabase session
+   */
+  async getCurrentUser() {
+    try {
+      const { data: { user }, error } = await supabase.auth.getUser()
+      if (error || !user) {
+        return null
+      }
+      return user
+    } catch (error) {
+      console.error('Error getting current user:', error)
+      return null
+    }
+  },
+
+  /**
+   * Get session token for API authentication
+   */
+  async getSessionToken(): Promise<string | null> {
+    try {
+      const { data: { session }, error } = await supabase.auth.getSession()
+      if (error || !session) {
+        return null
+      }
+      return session.access_token || null
+    } catch (error) {
+      console.error('Error getting session token:', error)
+      return null
+    }
+  },
+
+  /**
+   * Verify that an order belongs to the authenticated user (client-side)
+   */
+  async verifyOrderOwnership(orderId: string | number, userEmail: string) {
+    try {
+      const { data: order, error } = await supabase
+        .from('orders')
+        .select('customer_email, id')
+        .eq('id', orderId)
+        .single()
+
+      if (error || !order) {
+        return { success: false, error: 'Order not found' }
+      }
+
+      if (order.customer_email !== userEmail) {
+        return { success: false, error: 'Unauthorized - Order does not belong to user' }
+      }
+
+      return { success: true, error: null }
+    } catch (error) {
+      console.error('Order ownership verification error:', error)
+      return { success: false, error: 'Verification failed' }
+    }
+  },
+
+  /**
+   * Calculate the actual order total from database prices (client-side)
+   * This prevents client-side price manipulation
+   */
+  async calculateOrderTotal(
+    items: Array<{ product_id: number; quantity: number }>,
+    shippingCharge: number = 0
+  ) {
+    try {
+      // Get product IDs
+      const productIds = items.map(item => item.product_id)
+
+      if (productIds.length === 0) {
+        return {
+          success: true,
+          subtotal: 0,
+          shipping: shippingCharge,
+          total: shippingCharge,
+          items: []
+        }
+      }
+
+      // Fetch products from database to get actual prices
+      const { data: products, error } = await supabase
+        .from('products')
+        .select('id, price, in_stock, stock_quantity, name')
+        .in('id', productIds)
+
+      if (error || !products) {
+        return {
+          success: false,
+          error: 'Failed to fetch product prices'
+        }
+      }
+
+      // Calculate total from database prices
+      let subtotal = 0
+      const itemsWithPrices = []
+
+      for (const item of items) {
+        const product = products.find(p => p.id === item.product_id)
+        
+        if (!product) {
+          return {
+            success: false,
+            error: `Product ${item.product_id} not found`
+          }
+        }
+
+        if (!product.in_stock) {
+          return {
+            success: false,
+            error: `${product.name || `Product ${item.product_id}`} is out of stock`
+          }
+        }
+
+        if (product.stock_quantity < item.quantity) {
+          return {
+            success: false,
+            error: `Insufficient stock for ${product.name || `product ${item.product_id}`}. Available: ${product.stock_quantity}`
+          }
+        }
+
+        const itemTotal = product.price * item.quantity
+        subtotal += itemTotal
+
+        itemsWithPrices.push({
+          product_id: item.product_id,
+          quantity: item.quantity,
+          price: product.price,
+          total: itemTotal
+        })
+      }
+
+      return {
+        success: true,
+        subtotal,
+        shipping: shippingCharge,
+        total: subtotal + shippingCharge,
+        items: itemsWithPrices
+      }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to calculate order total'
+      }
+    }
+  },
+
+  /**
+   * Check if user is admin (client-side)
+   */
+  async isAdmin(userId?: string) {
+    try {
+      const currentUser = userId ? { id: userId } : await this.getCurrentUser()
+      if (!currentUser) {
+        return false
+      }
+
+      const { data, error } = await supabase
+        .from("user_data")
+        .select("role")
+        .eq("user_id", currentUser.id)
+        .single()
+
+      if (error) {
+        return false
+      }
+
+      return data?.role === "admin"
+    } catch (error) {
+      console.error('Error checking admin status:', error)
+      return false
+    }
+  },
+}
+
+// Log that we're calling a database function
+console.log('[Supabase Client] Module loaded');

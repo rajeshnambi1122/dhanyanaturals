@@ -1,8 +1,8 @@
 "use client"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import Image from "next/image"
 import Link from "next/link"
-import { useRouter, usePathname } from "next/navigation"
+import { useRouter, usePathname, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -10,7 +10,6 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { ShoppingBag, Star, Search, Grid, List, Filter, SlidersHorizontal, Heart, Sparkles } from "lucide-react"
 import { productService, type Product } from "@/lib/supabase"
-import dynamic from "next/dynamic"
 
 
 const categories = [
@@ -23,21 +22,25 @@ const categories = [
   { id: "essential-oils", name: "Essential Oils", icon: "🌸" },
 ]
 
-function ProductsPage() {
+export default function ProductsPage() {
   const router = useRouter()
   const pathname = usePathname()
+  const searchParams = useSearchParams()
+  
+  // Initialize with URL parameters if available
+  const [searchInput, setSearchInput] = useState(searchParams.get('search') || "") // What user types
+  const [searchTerm, setSearchTerm] = useState(searchParams.get('search') || "") // Actual search filter
+  const [selectedCategory, setSelectedCategory] = useState(searchParams.get('category') || "all")
+  const [sortBy, setSortBy] = useState(searchParams.get('sort') || "name")
+  const [showInStockOnly, setShowInStockOnly] = useState(searchParams.get('inStock') === 'true')
+  
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [searchInput, setSearchInput] = useState("") // What user types
-  const [searchTerm, setSearchTerm] = useState("") // Actual search filter
-  const [selectedCategory, setSelectedCategory] = useState("all")
-  const [sortBy, setSortBy] = useState("name")
-  const [showInStockOnly, setShowInStockOnly] = useState(false)
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid")
   const [showFilters, setShowFilters] = useState(false)
   const [prefetchedProducts, setPrefetchedProducts] = useState<Set<number>>(new Set())
-  const [refreshTrigger, setRefreshTrigger] = useState(0) // Trigger for manual refresh
+  const isInitialMount = useRef(true) // Track if this is the first render
 
   // Debug: Log component render
   console.log('[ProductsPage] Component rendered, pathname:', pathname, 'products count:', products.length, 'loading:', loading)
@@ -46,6 +49,15 @@ function ProductsPage() {
   const handleSearch = () => {
     console.log('[Search] Searching for:', searchInput);
     setSearchTerm(searchInput);
+    
+    // Update URL parameters
+    const params = new URLSearchParams(searchParams);
+    if (searchInput) {
+      params.set('search', searchInput);
+    } else {
+      params.delete('search');
+    }
+    router.replace(`/products?${params.toString()}`);
   };
 
   // Handle Enter key in search input
@@ -55,41 +67,69 @@ function ProductsPage() {
     }
   };
 
-  // Load products on component mount and when filters change
-  useEffect(() => {
-    console.log('[ProductsPage] LOAD EFFECT triggered, pathname:', pathname);
-    
-    const loadProducts = async () => {
+  // Unified function to load products based on current filters
+  const loadProducts = async () => {
+    try {
+      if (isInitialMount.current) {
+        console.log('[ProductsPage] Loading initial data...');
+        isInitialMount.current = false;
+      } else {
+        console.log('[ProductsPage] FILTER EFFECT triggered, filters changed');
+      }
+      
+      setLoading(true);
+      setError(null);
+      
+      // Add timeout to prevent hanging
+      const timeoutId = setTimeout(() => {
+        console.error('[ProductsPage] Request timed out after 10 seconds');
+        setError('Request timed out. Please refresh the page.');
+        setLoading(false);
+      }, 10000);
+      
       try {
-        console.log('[Products - LOAD] Starting product load...');
-        setLoading(true);
-        setError(null);
-        
-        // Add small delay to ensure client-side rendering
-        await new Promise(resolve => setTimeout(resolve, 100));
-        
-        // Use the service instead of direct query for consistency
-        const products = await productService.getProducts({
+        const loadedProducts = await productService.getProducts({
           category: selectedCategory,
           search: searchTerm,
           inStockOnly: showInStockOnly,
           sortBy: sortBy,
         });
-        console.log('[Products - LOAD] Got', products.length, 'products');
         
-        setProducts(products);
+        clearTimeout(timeoutId);
+        setProducts(loadedProducts);
+        console.log('[ProductsPage] Got', loadedProducts.length, 'products');
       } catch (error) {
-        console.error("[Products - LOAD] Error:", error);
-        const errorMessage = error instanceof Error ? error.message : 'Failed to load products';
-        setError(errorMessage);
-        setProducts([]);
-      } finally {
-        setLoading(false);
+        clearTimeout(timeoutId);
+        throw error;
       }
-    };
+    } catch (error) {
+      console.error('[ProductsPage] Error loading products:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to load products';
+      setError(errorMessage);
+      setProducts([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    loadProducts();
-  }, [pathname, selectedCategory, searchTerm, sortBy, showInStockOnly, refreshTrigger]); // All dependencies
+  // This effect synchronizes the URL search params to the component's state
+  useEffect(() => {
+    const category = searchParams.get('category') || 'all'
+    const search = searchParams.get('search') || ''
+    const sort = searchParams.get('sort') || 'name'
+    const inStock = searchParams.get('inStock') === 'true'
+
+    setSelectedCategory(category)
+    setSearchTerm(search)
+    setSortBy(sort)
+    setShowInStockOnly(inStock)
+  }, [searchParams])
+
+  // This effect fetches data whenever the state (driven by the URL) changes
+  useEffect(() => {
+    loadProducts()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCategory, searchTerm, sortBy, showInStockOnly]);
 
 
   // Background prefetching for popular products
@@ -180,13 +220,17 @@ function ProductsPage() {
                   <Input
                     placeholder="Search products..."
                     value={searchInput}
-                    onChange={(e) => setSearchInput(e.target.value)}
-                    onKeyPress={handleSearchKeyPress}
+                    onChange={(e) => {
+                      setSearchInput(e.target.value);
+                    }}
+                    onKeyPress={(e) => {
+                      handleSearchKeyPress(e);
+                    }}
                     className="pl-10 glass-input focus-ring"
                   />
                 </div>
                 <Button
-                  onClick={handleSearch}
+                  onClick={() => handleSearch()}
                   className="glass-button px-4"
                   size="sm"
                 >
@@ -216,7 +260,18 @@ function ProductsPage() {
                         ? "glass-button text-white transform scale-105"
                         : "glass-input hover:bg-white/50"
                     }`}
-                    onClick={() => setSelectedCategory(category.id)}
+                    onClick={() => {
+                      setSelectedCategory(category.id);
+                      
+                      // Update URL parameters
+                      const params = new URLSearchParams(searchParams);
+                      if (category.id !== 'all') {
+                        params.set('category', category.id);
+                      } else {
+                        params.delete('category');
+                      }
+                      router.replace(`/products?${params.toString()}`);
+                    }}
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-2">
@@ -241,7 +296,9 @@ function ProductsPage() {
                   <Checkbox
                     id="in-stock"
                     checked={showInStockOnly}
-                    onCheckedChange={val => setShowInStockOnly(val === true)}
+                    onCheckedChange={(val) => {
+                      setShowInStockOnly(val === true);
+                    }}
                     className="focus-ring"
                   />
                   <Label htmlFor="in-stock" className="cursor-pointer">
@@ -256,7 +313,9 @@ function ProductsPage() {
           <div className="flex-1">
             {/* Mobile Filter Toggle */}
             <div className="lg:hidden mb-6">
-              <Button onClick={() => setShowFilters(!showFilters)} className="glass-button-secondary w-full">
+              <Button onClick={() => {
+                setShowFilters(!showFilters);
+              }} className="glass-button-secondary w-full">
                 <Filter className="h-4 w-4 mr-2" />
                 {showFilters ? "Hide Filters" : "Show Filters"}
               </Button>
@@ -278,7 +337,9 @@ function ProductsPage() {
                   </p>
                 </div>
                 <div className="flex items-center gap-4">
-                  <Select value={sortBy} onValueChange={setSortBy}>
+                  <Select value={sortBy} onValueChange={(value) => {
+                    setSortBy(value);
+                  }}>
                     <SelectTrigger className="w-48 glass-input focus-ring">
                       <SelectValue placeholder="Sort by" />
                     </SelectTrigger>
@@ -293,7 +354,9 @@ function ProductsPage() {
                     <Button
                       variant={viewMode === "grid" ? "default" : "ghost"}
                       size="sm"
-                      onClick={() => setViewMode("grid")}
+                      onClick={() => {
+                        setViewMode("grid");
+                      }}
                       className="hover-lift"
                     >
                       <Grid className="h-4 w-4" />
@@ -301,7 +364,9 @@ function ProductsPage() {
                     <Button
                       variant={viewMode === "list" ? "default" : "ghost"}
                       size="sm"
-                      onClick={() => setViewMode("list")}
+                      onClick={() => {
+                        setViewMode("list");
+                      }}
                       className="hover-lift"
                     >
                       <List className="h-4 w-4" />
@@ -315,11 +380,12 @@ function ProductsPage() {
             {viewMode === "grid" ? (
               <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-8 stagger-animation">
                 {products.map((product, index) => (
-                  <Link href={`/products/${product.id}`} key={product.id} prefetch={true}>
-                    <div 
-                      className="glass-product-card product-card-hover cursor-pointer group"
-                      onMouseEnter={() => handleProductHover(product.id)}
-                    >
+                  <Link 
+                    key={product.id}
+                    href={`/products/${product.id}`}
+                    className="glass-product-card product-card-hover cursor-pointer group"
+                    onMouseEnter={() => handleProductHover(product.id)}
+                  >
                       <div className="p-0 relative overflow-hidden">
                         <div className="relative overflow-hidden rounded-t-lg">
                           <Image
@@ -377,18 +443,18 @@ function ProductsPage() {
                           </div>
                         </div>
                       </div>
-                    </div>
                   </Link>
                 ))}
               </div>
             ) : (
               <div className="space-y-6 stagger-animation">
                 {products.map((product, index) => (
-                  <Link href={`/products/${product.id}`} key={product.id} prefetch={true}>
-                    <div 
-                      className="glass-card p-4 sm:p-6 cursor-pointer hover:shadow-lg transition-all duration-300 hover-lift group"
-                      onMouseEnter={() => handleProductHover(product.id)}
-                    >
+                  <div 
+                    key={product.id}
+                    className="glass-card p-4 sm:p-6 cursor-pointer hover:shadow-lg transition-all duration-300 hover-lift group"
+                    onMouseEnter={() => handleProductHover(product.id)}
+                    onClick={() => router.push(`/products/${product.id}`)}
+                  >
                       <div className="flex gap-3 sm:gap-6">
                         <div className="relative overflow-hidden rounded-lg flex-shrink-0">
                           <Image
@@ -436,7 +502,6 @@ function ProductsPage() {
                         </div>
                       </div>
                     </div>
-                  </Link>
                 ))}
               </div>
             )}
@@ -459,12 +524,11 @@ function ProductsPage() {
                   </p>
                   <Button
                     onClick={() => {
-                      setSearchInput("")
-                      setSearchTerm("")
-                      setSelectedCategory("all")
-                      setShowInStockOnly(false)
-                      setError(null)
-                      setRefreshTrigger(prev => prev + 1) // Trigger reload
+                      setSearchInput("");
+                      setSearchTerm("");
+                      setSelectedCategory("all");
+                      setShowInStockOnly(false);
+                      setError(null);
                     }}
                     className="glass-button-secondary"
                   >
@@ -479,11 +543,3 @@ function ProductsPage() {
     </div>
   )
 }
-
-// Force client-side rendering to make Supabase API calls visible in Network tab
-export default dynamic(() => Promise.resolve(ProductsPage), { 
-  ssr: false,
-  loading: () => <div className="flex items-center justify-center min-h-screen">
-    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600"></div>
-  </div>
-})

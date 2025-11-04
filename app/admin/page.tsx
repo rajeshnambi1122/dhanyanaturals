@@ -9,8 +9,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Plus, Edit, Trash2, Package, ShoppingCart, TrendingUp, AlertTriangle, Upload, X, Phone, MapPin, CreditCard, Truck, FileText, Clock, Calendar, DollarSign, UserCircle, Mail, Image as ImageIcon, Tag, Star } from "lucide-react"
-import { productService, orderService, authService, storageService, type Product, type Order, type UserData } from "@/lib/supabase"
+import { productService, orderService, authService, storageService, clientAuth, type Product, type Order, type UserData } from "@/lib/supabase"
 import { useAuth } from "@/contexts/AuthContext"
+import { sendOrderStatusEmail } from "@/lib/resend"
 
 export default function AdminDashboard() {
   const { getSessionToken } = useAuth()
@@ -88,23 +89,22 @@ export default function AdminDashboard() {
       
       // Fire and forget: notify customer via email
       try {
-        const token = await getSessionToken()
-        if (token) {
-          fetch('/api/email/status', {
-            method: 'POST',
-            headers: { 
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}` // ✅ SECURITY: Include auth token
-            },
-            body: JSON.stringify({
-              to: updated?.customer_email,
-              orderId,
-              newStatus,
-              items: updated?.items,
-              total: updated?.total_amount,
-              customerName: updated?.customer_name,
-              trackingNumber: updated?.tracking_number,
-            }),
+        // ✅ SECURITY: Verify admin role client-side before sending email
+        const isAdmin = await clientAuth.isAdmin()
+        if (!isAdmin) {
+          console.warn('Non-admin user attempted to send order status email')
+          return
+        }
+
+        if (updated?.customer_email) {
+          await sendOrderStatusEmail({
+            to: updated.customer_email,
+            orderId,
+            newStatus,
+            items: (updated.items as any[])?.map((i: any) => ({ name: i.product_name || i.name, qty: i.quantity || i.qty || 1, price: Number(i.price) || 0 })) || [],
+            total: updated?.total_amount,
+            customerName: updated?.customer_name,
+            trackingNumber: updated?.tracking_number,
           })
         }
       } catch {}
@@ -568,7 +568,9 @@ export default function AdminDashboard() {
                             <Input
                               id="name"
                               value={newProduct.name}
-                              onChange={(e) => setNewProduct({ ...newProduct, name: e.target.value })}
+                              onChange={(e) => {
+                                setNewProduct({ ...newProduct, name: e.target.value });
+                              }}
                               placeholder="Enter product name"
                               className="glass-input"
                             />
@@ -577,7 +579,9 @@ export default function AdminDashboard() {
                             <Label htmlFor="category">Category</Label>
                             <Select
                               value={newProduct.category}
-                              onValueChange={(value) => setNewProduct({ ...newProduct, category: value })}
+                              onValueChange={(value) => {
+                                setNewProduct({ ...newProduct, category: value });
+                              }}
                             >
                               <SelectTrigger className="glass-input">
                                 <SelectValue placeholder="Select category" />
@@ -602,7 +606,9 @@ export default function AdminDashboard() {
                               type="number"
                               step="0.01"
                               value={newProduct.price}
-                              onChange={(e) => setNewProduct({ ...newProduct, price: e.target.value })}
+                              onChange={(e) => {
+                                setNewProduct({ ...newProduct, price: e.target.value });
+                              }}
                               placeholder="0.00"
                               className="glass-input"
                             />
@@ -614,7 +620,9 @@ export default function AdminDashboard() {
                               type="number"
                               step="0.01"
                               value={newProduct.original_price}
-                              onChange={(e) => setNewProduct({ ...newProduct, original_price: e.target.value })}
+                              onChange={(e) => {
+                                setNewProduct({ ...newProduct, original_price: e.target.value });
+                              }}
                               placeholder="0.00"
                               className="glass-input"
                             />
@@ -625,7 +633,9 @@ export default function AdminDashboard() {
                               id="stock"
                               type="number"
                               value={newProduct.stock_quantity}
-                              onChange={(e) => setNewProduct({ ...newProduct, stock_quantity: e.target.value })}
+                              onChange={(e) => {
+                                setNewProduct({ ...newProduct, stock_quantity: e.target.value });
+                              }}
                               placeholder="0"
                               className="glass-input"
                             />
@@ -669,7 +679,9 @@ export default function AdminDashboard() {
                                   id="images"
                                   accept="image/*"
                                   multiple
-                                  onChange={handleImageSelect}
+                                  onChange={(e) => {
+                                    handleImageSelect(e);
+                                  }}
                                   className="hidden"
                                   disabled={imagePreviews.length >= 5}
                                 />
@@ -694,7 +706,9 @@ export default function AdminDashboard() {
                               {imagePreviews.length > 0 && (
                                 <button
                                   type="button"
-                                  onClick={handleRemoveAllImages}
+                                  onClick={() => {
+                                    handleRemoveAllImages();
+                                  }}
                                   className="text-sm text-red-600 hover:text-red-700"
                                 >
                                   Remove all images
@@ -713,7 +727,9 @@ export default function AdminDashboard() {
                           <Textarea
                             id="description"
                             value={newProduct.description}
-                            onChange={(e) => setNewProduct({ ...newProduct, description: e.target.value })}
+                            onChange={(e) => {
+                              setNewProduct({ ...newProduct, description: e.target.value });
+                            }}
                             placeholder="Brief product description"
                             className="glass-input"
                           />
@@ -724,7 +740,9 @@ export default function AdminDashboard() {
                           <Textarea
                             id="long_description"
                             value={newProduct.long_description}
-                            onChange={(e) => setNewProduct({ ...newProduct, long_description: e.target.value })}
+                            onChange={(e) => {
+                              setNewProduct({ ...newProduct, long_description: e.target.value });
+                            }}
                             placeholder="Detailed product description"
                             className="glass-input"
                             rows={4}
@@ -737,7 +755,9 @@ export default function AdminDashboard() {
                             <Textarea
                               id="ingredients"
                               value={newProduct.ingredients}
-                              onChange={(e) => setNewProduct({ ...newProduct, ingredients: e.target.value })}
+                              onChange={(e) => {
+                                setNewProduct({ ...newProduct, ingredients: e.target.value });
+                              }}
                               placeholder="Ingredient 1, Ingredient 2, ..."
                               className="glass-input"
                             />
@@ -747,7 +767,9 @@ export default function AdminDashboard() {
                             <Textarea
                               id="benefits"
                               value={newProduct.benefits}
-                              onChange={(e) => setNewProduct({ ...newProduct, benefits: e.target.value })}
+                              onChange={(e) => {
+                                setNewProduct({ ...newProduct, benefits: e.target.value });
+                              }}
                               placeholder="Benefit 1, Benefit 2, ..."
                               className="glass-input"
                             />
@@ -759,7 +781,9 @@ export default function AdminDashboard() {
                           <Textarea
                             id="how_to_use"
                             value={newProduct.how_to_use}
-                            onChange={(e) => setNewProduct({ ...newProduct, how_to_use: e.target.value })}
+                            onChange={(e) => {
+                              setNewProduct({ ...newProduct, how_to_use: e.target.value });
+                            }}
                             placeholder="Usage instructions"
                             className="glass-input"
                           />
@@ -771,7 +795,9 @@ export default function AdminDashboard() {
                             <Input
                               id="weight"
                               value={newProduct.weight}
-                              onChange={(e) => setNewProduct({ ...newProduct, weight: e.target.value })}
+                              onChange={(e) => {
+                                setNewProduct({ ...newProduct, weight: e.target.value });
+                              }}
                               placeholder="100g"
                               className="glass-input"
                             />
@@ -781,7 +807,9 @@ export default function AdminDashboard() {
                             <Input
                               id="dimensions"
                               value={newProduct.dimensions}
-                              onChange={(e) => setNewProduct({ ...newProduct, dimensions: e.target.value })}
+                              onChange={(e) => {
+                                setNewProduct({ ...newProduct, dimensions: e.target.value });
+                              }}
                               placeholder="7cm x 5cm x 2cm"
                               className="glass-input"
                             />
@@ -791,7 +819,9 @@ export default function AdminDashboard() {
                             <Input
                               id="shelf_life"
                               value={newProduct.shelf_life}
-                              onChange={(e) => setNewProduct({ ...newProduct, shelf_life: e.target.value })}
+                              onChange={(e) => {
+                                setNewProduct({ ...newProduct, shelf_life: e.target.value });
+                              }}
                               placeholder="24 months"
                               className="glass-input"
                             />
@@ -803,14 +833,18 @@ export default function AdminDashboard() {
                           <Input
                             id="tags"
                             value={newProduct.tags}
-                            onChange={(e) => setNewProduct({ ...newProduct, tags: e.target.value })}
+                            onChange={(e) => {
+                              setNewProduct({ ...newProduct, tags: e.target.value });
+                            }}
                             placeholder="natural, organic, handmade"
                             className="glass-input"
                           />
                         </div>
 
                         <Button
-                          onClick={editingProduct ? handleUpdateProduct : handleAddProduct}
+                          onClick={() => {
+                            editingProduct ? handleUpdateProduct() : handleAddProduct();
+                          }}
                           className="w-full glass-button"
                           disabled={uploadingImages}
                         >
@@ -1037,7 +1071,8 @@ export default function AdminDashboard() {
                               <div className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
                                 order.status === "delivered" ? "bg-green-100 text-green-800" : 
                                 order.status === "shipped" ? "bg-blue-100 text-blue-800" : 
-                                order.status === "processing" ? "bg-yellow-100 text-yellow-800" : 
+                                order.status === "pending" ? "bg-yellow-100 text-yellow-800" : 
+                                order.status === "confirmed" ? "bg-green-100 text-green-800" :
                                 "bg-red-100 text-red-800"
                               }`}>
                                 {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
@@ -1234,9 +1269,9 @@ export default function AdminDashboard() {
                   <Label className="text-sm font-medium text-gray-700 mb-3 block">Select New Status</Label>
                   <div className="grid grid-cols-1 gap-2">
                     {[
-                      { value: 'pending', label: 'Pending', color: 'bg-gray-100 text-gray-800 hover:bg-gray-200' },
-                      { value: 'processing', label: 'Processing', color: 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200' },
-                      { value: 'shipped', label: 'Shipped', color: 'bg-blue-100 text-blue-800 hover:bg-blue-200' },
+                      { value: 'pending', label: 'Pending', color: 'bg-red-100 text-red-800 hover:bg-red-200' },
+                      { value: 'confirmed', label: 'Confirmed', color: 'bg-green-100 text-black hover:bg-yellow-200' },
+                      { value: 'shipped', label: 'Shipped', color: 'bg-green-100 text-green-800 hover:bg-green-200' },
                       { value: 'delivered', label: 'Delivered', color: 'bg-green-100 text-green-800 hover:bg-green-200' },
                       { value: 'cancelled', label: 'Cancelled', color: 'bg-red-100 text-red-800 hover:bg-red-200' }
                     ].map((status) => (

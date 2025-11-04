@@ -157,7 +157,9 @@ export default function AccountPage() {
             {/* Action Buttons */}
             <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
               <button 
-                onClick={handleLogout} 
+                onClick={() => {
+                  handleLogout();
+                }} 
                 className="glass-button px-4 py-2 rounded-lg flex items-center justify-center gap-2 hover-lift bg-red-500 hover:bg-red-600 text-white"
               >
                 <LogOut className="h-4 w-4" />
@@ -218,6 +220,7 @@ export default function AccountPage() {
                           </h3>
                           <div className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
                             order.status === "delivered" ? "bg-green-100 text-green-800" : 
+                            order.status === "confirmed" ? "bg-green-100 text-black" : 
                             order.status === "shipped" ? "bg-blue-100 text-blue-800" : 
                             order.status === "processing" ? "bg-yellow-100 text-yellow-800" : 
                             "bg-red-100 text-red-800"

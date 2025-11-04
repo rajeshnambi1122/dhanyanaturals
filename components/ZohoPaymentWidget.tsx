@@ -1,8 +1,91 @@
 "use client";
 
 import { useEffect, useRef, useState } from 'react';
-import { initializeZohoPaymentWidget } from '@/lib/zoho-auth-client';
-import { supabase } from '@/lib/supabase';
+import { supabase, clientAuth } from '@/lib/supabase';
+
+// Initialize Zoho Payment Widget helper function
+async function initializeZohoPaymentWidget(
+  amount: number,
+  currency: string = 'INR',
+  description: string,
+  referenceNumber: string,
+  customerDetails: {
+    name: string;
+    email: string;
+    phone: string;
+  },
+  authToken?: string,
+  cartItems?: Array<{ product_id: number; quantity: number }>,
+  shippingCharge?: number
+): Promise<{
+  success: boolean;
+  payments_session_id?: string;
+  error?: string;
+  authUrl?: string;
+}> {
+  try {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json'
+    };
+    
+    if (authToken) {
+      headers['Authorization'] = `Bearer ${authToken}`;
+    }
+
+    const sessionResponse = await fetch('/api/payments/session', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        amount: amount.toString(),
+        currency,
+        description,
+        reference_number: referenceNumber,
+        address: {
+          name: customerDetails.name,
+          email: customerDetails.email,
+          phone: customerDetails.phone
+        },
+        cart_items: cartItems,
+        shipping_charge: shippingCharge
+      })
+    });
+
+    if (!sessionResponse.ok) {
+      const errorData = await sessionResponse.json().catch(() => ({}));
+      
+      if (sessionResponse.status === 401 && errorData.authUrl) {
+        return { 
+          success: false, 
+          error: errorData.error || 'Authentication required',
+          authUrl: errorData.authUrl
+        };
+      }
+      
+      throw new Error(errorData.error || 'Failed to create payment session');
+    }
+
+    const sessionData = await sessionResponse.json();
+    const paymentsSessionId = sessionData.payments_session_id;
+
+    sessionStorage.setItem('paymentsSessionId', paymentsSessionId || '');
+    sessionStorage.setItem('sessionDescription', description);
+
+    if (!paymentsSessionId) {
+      throw new Error('Invalid session response');
+    }
+    
+    return {
+      success: true,
+      payments_session_id: paymentsSessionId
+    };
+  } catch (error) {
+    console.error('Payment initialization error:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    };
+  }
+}
 
 interface ZohoPaymentWidgetProps {
   amount: number;
@@ -43,6 +126,7 @@ export default function ZohoPaymentWidget({
 }: ZohoPaymentWidgetProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0); // Track retry attempts
   const instanceRef = useRef<any>(null);
   const isInitializedRef = useRef(false); // Track if widget has been initialize
   
@@ -96,37 +180,76 @@ export default function ZohoPaymentWidget({
           token = data.session?.access_token || undefined;
         }
 
-        console.log('[PaymentWidget] Creating payment session...');
-        // Use our centralized helper to create a payment session with timeout
-        const sessionPromise = initializeZohoPaymentWidget(
-          amount,
-          currency,
-          description,
-          orderId,
-          customerDetails,
-          token, // ✅ SECURITY: Pass authentication token
-          cartItems, // ✅ SECURITY: Pass cart items for server-side verification
-          shippingCharge // ✅ SECURITY: Pass shipping charge for server-side verification
-        );
-
-        const sessionResult = await sessionPromise;
-
-        if (!sessionResult.success) {
-          // Check if authentication is required
-          if (sessionResult.authUrl) {
-            console.log('[PaymentWidget] Authentication required, redirecting...');
-            // Redirect to authentication
-            window.location.href = sessionResult.authUrl;
-            return;
+        console.log('[PaymentWidget] Verifying order total client-side...');
+        // ✅ SECURITY: Verify order total client-side before creating payment session
+        if (cartItems && cartItems.length > 0) {
+          const verification = await clientAuth.calculateOrderTotal(cartItems, shippingCharge || 0);
+          
+          if (!verification.success) {
+            throw new Error(verification.error || 'Failed to verify order amount');
           }
-          throw new Error(sessionResult.error || 'Failed to create payment session');
+
+          // Check if client-sent amount matches database-calculated amount
+          const expectedAmount = verification.total || 0;
+          const clientAmount = parseFloat(amount.toString());
+
+          if (Math.abs(expectedAmount - clientAmount) > 0.01) { // Allow 1 paisa difference for rounding
+            console.error('Amount mismatch detected:', {
+              client_amount: clientAmount,
+              database_calculated: expectedAmount,
+              difference: Math.abs(expectedAmount - clientAmount)
+            });
+            
+            throw new Error(`Amount verification failed. Expected ₹${expectedAmount.toFixed(2)}, but got ₹${clientAmount.toFixed(2)}`);
+          }
+
+          console.log('[PaymentWidget] Amount verified successfully:', {
+            amount: expectedAmount,
+            verified: true
+          });
         }
 
-        const paymentsSessionId = sessionResult.payments_session_id;
-        console.log('[PaymentWidget] Payment session created:', paymentsSessionId);
+        // Reuse pre-created session id if available
+        let paymentsSessionId: string | undefined = undefined;
+        if (typeof window !== 'undefined') {
+          paymentsSessionId = sessionStorage.getItem('paymentsSessionId') || undefined;
+        }
 
-        if (!paymentsSessionId) {
-          throw new Error('Invalid session response');
+        if (paymentsSessionId) {
+          console.log('[PaymentWidget] Reusing pre-created payment session:', paymentsSessionId);
+        } else {
+          console.log('[PaymentWidget] Creating payment session...');
+          // Use our centralized helper to create a payment session with timeout
+          const sessionPromise = initializeZohoPaymentWidget(
+            amount,
+            currency,
+            description,
+            orderId,
+            customerDetails,
+            token, // ✅ SECURITY: Pass authentication token
+            cartItems, // ✅ SECURITY: Pass cart items for server-side verification
+            shippingCharge // ✅ SECURITY: Pass shipping charge for server-side verification
+          );
+
+          const sessionResult = await sessionPromise;
+
+          if (!sessionResult.success) {
+            // Check if authentication is required
+            if (sessionResult.authUrl) {
+              console.log('[PaymentWidget] Authentication required, redirecting...');
+              // Redirect to authentication
+              window.location.href = sessionResult.authUrl;
+              return;
+            }
+            throw new Error(sessionResult.error || 'Failed to create payment session');
+          }
+
+          paymentsSessionId = sessionResult.payments_session_id;
+          console.log('[PaymentWidget] Payment session created:', paymentsSessionId);
+
+          if (!paymentsSessionId) {
+            throw new Error('Invalid session response');
+          }
         }
 
         // Initialize Zoho Payments instance
@@ -184,12 +307,13 @@ export default function ZohoPaymentWidget({
         } else {
           // Handle any other cases (like widget closure without explicit cancellation)
           console.log('[PaymentWidget] Payment widget closed without explicit cancellation');
-          console.log('[PaymentWidget] Unknown payment response, treating as success if no error');
-          // If we have payment data but no explicit error, treat as success
-          if (paymentData && !paymentData.code) {
-            console.log('[PaymentWidget] Treating response as successful payment');
+          console.log('[PaymentWidget] Unexpected payment response:', paymentData);
+          // ✅ SECURITY: Only treat as success if we have a definitive payment confirmation
+          if (paymentData && paymentData.payment_id && paymentData.payment_id.trim() !== '') {
+            console.log('[PaymentWidget] Payment confirmed with payment_id:', paymentData.payment_id);
             onSuccess(paymentData);
           } else {
+            console.warn('[PaymentWidget] No definitive payment confirmation found. Closing widget.');
             onClose(); // Just close, don't create order
           }
         }
@@ -225,7 +349,7 @@ export default function ZohoPaymentWidget({
 
     initializeWidget();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [amount, currency, description, orderId]); // Removed callback dependencies to prevent re-renders
+  }, [amount, currency, description, orderId, retryCount]); // Added retryCount to trigger re-initialization
 
   // Cleanup on unmount
   useEffect(() => {
@@ -267,6 +391,7 @@ export default function ZohoPaymentWidget({
                 setIsLoading(true);
                 setError(null);
                 isInitializedRef.current = false;
+                setRetryCount(prev => prev + 1); // Increment retry count to trigger useEffect
               }}
               className="w-full bg-green-600 text-white py-2 px-4 rounded hover:bg-green-700 transition-colors"
             >

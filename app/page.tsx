@@ -1,12 +1,12 @@
+"use client"
+
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Leaf, ShoppingBag, Star, Shield, Heart, Sparkles, Zap} from "lucide-react"
 import { productService, supabase } from "@/lib/supabase"
 import ConfettiWrapper from "@/components/ConfettiWrapper"
-
-// Revalidate the page 
-export const revalidate = 30000
 
 const categories = [
   { 
@@ -41,46 +41,7 @@ const categories = [
   },
 ]
 
-// Server-side data fetching functions
-async function getCategoryCounts() {
-  try {
-    const { data: products, error } = await supabase
-      .from('products')
-      .select('category')
-      .eq('status', 'active')
-      .eq('in_stock', true)
-
-    if (error) {
-      console.error('Category counts fetch error:', error)
-      return {}
-    }
-
-    // Count products per category
-    const categoryCounts = products?.reduce((acc: any, product: any) => {
-      const category = product.category
-      if (acc[category]) {
-        acc[category]++
-      } else {
-        acc[category] = 1
-      }
-      return acc
-    }, {}) || {}
-
-    return categoryCounts
-  } catch (error) {
-    console.error('Error fetching category counts:', error)
-    return {}
-  }
-}
-
-async function getFeaturedProducts() {
-  try {
-    return await productService.getFeaturedProducts(4)
-  } catch (error) {
-    console.error('Error fetching featured products:', error)
-    return []
-  }
-}
+// Client-side data fetching
 
 const features = [
   {
@@ -120,12 +81,10 @@ const features = [
   }
 ]
 
-export default async function HomePage() {
-  // Fetch data server-side
-  const [categoryCounts, featuredProducts] = await Promise.all([
-    getCategoryCounts(),
-    getFeaturedProducts()
-  ])
+export default function HomePage() {
+  const [categoryCounts, setCategoryCounts] = useState<Record<string, number>>({})
+  const [featuredProducts, setFeaturedProducts] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
 
   // Map category names to database category keys
   const getCategoryKey = (categoryName: string) => {
@@ -144,7 +103,49 @@ export default async function HomePage() {
     const categoryKey = getCategoryKey(categoryName)
     return categoryCounts[categoryKey] || fallbackCount
   }
-  
+
+  // Fetch data on mount
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true)
+        
+        // Fetch category counts and featured products in parallel
+        const [productsData, featuredData] = await Promise.all([
+          supabase
+            .from('products')
+            .select('category')
+            .eq('status', 'active')
+            .eq('in_stock', true)
+            .then(result => ({ data: result.data, error: result.error })),
+          productService.getFeaturedProducts(4)
+        ])
+
+        // Process category counts
+        if (productsData.data) {
+          const counts = productsData.data.reduce((acc: any, product: any) => {
+            const category = product.category
+            if (acc[category]) {
+              acc[category]++
+            } else {
+              acc[category] = 1
+            }
+            return acc
+          }, {})
+          setCategoryCounts(counts)
+        }
+
+        // Set featured products
+        setFeaturedProducts(featuredData || [])
+      } catch (error) {
+        console.error('Error fetching homepage data:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchData()
+  }, [])
 
   return (
     <div className="min-h-screen glass-background page-transition">
@@ -180,9 +181,9 @@ export default async function HomePage() {
                   <Link href="/products">
                     <Button size="lg" className="glass-button hover-lift">
                       <Sparkles className="h-5 w-5 mr-2" />
-                        Shop Now
-                      </Button>
-                    </Link>
+                      Shop Now
+                    </Button>
+                  </Link>
                 </div>
               </div>
               

@@ -13,12 +13,12 @@ import { SpeedInsights } from "@vercel/speed-insights/next"
 const poppins = Poppins({ subsets: ["latin"], weight: ["400", "600", "700"] });
 
 export const metadata: Metadata = {
-  title: "Dhanya Naturals - Organic & Natural Products",
-  description:
-    "Premium organic soaps, shampoos, herbal powders and natural skincare products. Handcrafted with love, free from chemicals.",
-  keywords: "organic soap, natural shampoo, herbal products, chemical-free skincare, handmade cosmetics",
+  title: "Dhanya Naturals - Premium Ayurvedic Products",
+  description: "Discover our range of premium Ayurvedic products. Natural, organic, and authentic wellness solutions for your everyday health needs.",
+  keywords: ["ayurvedic products", "natural products", "organic wellness", "dhanya naturals", "health and wellness", "herbal products"],
   icons: {
     icon: "/logo.png",
+    apple: "/logo.png",
   },
 };
 

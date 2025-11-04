@@ -1,6 +1,6 @@
 "use client";
-import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { supabase, authService } from '@/lib/supabase';
+import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { getSupabaseClient, authService } from '@/lib/supabase';
 
 interface AuthContextType {
   user: any;
@@ -26,6 +26,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const initAuth = async () => {
       try {
+        const supabase = getSupabaseClient();
         const { data } = await supabase.auth.getSession();
         setIsLoggedIn(!!data.session);
         
@@ -48,87 +49,57 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     initAuth();
-
-    const { data: listener } = supabase.auth.onAuthStateChange(async (event, session) => {
-      // Don't fetch user profile again if we're just getting the initial session
-      if (event === 'INITIAL_SESSION') {
-        return;
-      }
-      
-      setIsLoggedIn(!!session);
-      if (session) {
-        try {
-          const userProfile = await authService.getUserProfile(session.user.id);
-          // Only update if user data actually changed
-          setUser((prevUser: any) => {
-            const newUserStr = JSON.stringify(userProfile);
-            const prevUserStr = JSON.stringify(prevUser);
-            return newUserStr !== prevUserStr ? userProfile : prevUser;
-          });
-          setIsAdmin(userProfile?.role === "admin");
-        } catch (error) {
-          console.error("Error fetching user profile:", error);
-        }
-      } else {
-        setUser(null);
-        setIsAdmin(false);
-      }
-      setLoading(false);
-    });
-
-    return () => {
-      listener.subscription.unsubscribe();
-    };
-  }, []);
-
-  const signOut = async () => {
-    try {
-      await authService.signOut();
-      setUser(null);
-      setIsAdmin(false);
-      setIsLoggedIn(false);
-    } catch (error) {
-      console.error("Sign out failed:", error);
-      throw error;
-    }
-  };
+  }, [initialized]);
 
   const refreshUser = async () => {
     try {
-      const authUser = await authService.getCurrentUser();
-      if (authUser) {
-        const userProfile = await authService.getUserProfile(authUser.id);
-        // Only update if user data actually changed
-        setUser((prevUser: any) => {
-          const newUserStr = JSON.stringify(userProfile);
-          const prevUserStr = JSON.stringify(prevUser);
-          return newUserStr !== prevUserStr ? userProfile : prevUser;
-        });
-        setIsLoggedIn(true);
-        setIsAdmin(userProfile?.role === 'admin');
-      } else {
+      const supabase = getSupabaseClient();
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser) {
         setUser(null);
         setIsLoggedIn(false);
         setIsAdmin(false);
+        return;
       }
+      const userProfile = await authService.getUserProfile(authUser.id);
+      setUser(userProfile);
+      setIsLoggedIn(true);
+      setIsAdmin(userProfile?.role === 'admin');
     } catch (error) {
       console.error('Error refreshing user:', error);
     }
   };
 
-  // ✅ SECURITY: Get the current session token for API calls
-  const getSessionToken = async (): Promise<string | null> => {
+  const signOut = async () => {
+    const supabase = getSupabaseClient();
+    await supabase.auth.signOut();
+    setUser(null);
+    setIsLoggedIn(false);
+    setIsAdmin(false);
+  };
+
+  const getSessionToken = async () => {
     try {
-      const { data } = await supabase.auth.getSession();
-      return data.session?.access_token || null;
-    } catch (error) {
-      console.error('Error getting session token:', error);
+      const supabase = getSupabaseClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      return session?.access_token || null;
+    } catch {
       return null;
     }
   };
 
+  const value: AuthContextType = {
+    user,
+    isLoggedIn,
+    isAdmin,
+    loading,
+    signOut,
+    refreshUser,
+    getSessionToken,
+  };
+
   return (
-    <AuthContext.Provider value={{ user, isLoggedIn, isAdmin, loading, signOut, refreshUser, getSessionToken }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );

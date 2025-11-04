@@ -646,7 +646,9 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
 
               <div className="flex gap-4">
                 <Button
-                  onClick={handleAddToCart}
+                  onClick={() => {
+                    handleAddToCart();
+                  }}
                   disabled={!product.in_stock || addCartLoading || cartLoading}
                   className="flex-1 glass-button"
                   size="lg"
@@ -664,7 +666,9 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
                   )}
                 </Button>
                 <Button
-                  onClick={handleBuyNow}
+                  onClick={() => {
+                    handleBuyNow();
+                  }}
                   disabled={!product.in_stock}
                   variant="outline"
                   className="flex-1 glass-input bg-transparent border-green-600 text-green-600 hover:bg-green-600 hover:text-white"
@@ -686,7 +690,9 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
                 <Button 
                   variant="outline" 
                   className="glass-input bg-transparent hover-lift"
-                  onClick={handleShare}
+                  onClick={() => {
+                    handleShare();
+                  }}
                 >
                   <Share2 className="h-4 w-4 mr-2" />
                   Share
@@ -861,7 +867,9 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
                           <button
                             key={rating}
                             type="button"
-                            onClick={() => setReviewFormData(prev => ({ ...prev, rating }))}
+                            onClick={() => {
+                              setReviewFormData(prev => ({ ...prev, rating }));
+                            }}
                             className="p-1 hover:scale-110 transition-transform"
                           >
                             <Star
@@ -881,7 +889,9 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
                       <label className="block text-sm font-medium text-gray-700 mb-2">Review (Optional)</label>
                       <textarea
                         value={reviewFormData.reviewText}
-                        onChange={(e) => setReviewFormData(prev => ({ ...prev, reviewText: e.target.value }))}
+                        onChange={(e) => {
+                          setReviewFormData(prev => ({ ...prev, reviewText: e.target.value }));
+                        }}
                         rows={4}
                         className="w-full p-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent resize-none"
                         placeholder="Share your experience with this product..."
@@ -891,7 +901,9 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
                     {/* Form Actions */}
                     <div className="flex gap-3">
                       <Button
-                        onClick={handleSubmitReview}
+                        onClick={() => {
+                          handleSubmitReview();
+                        }}
                         disabled={reviewLoading}
                         className="glass-button"
                       >
@@ -915,7 +927,9 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
 
                       {userReview && (
                         <Button
-                          onClick={handleDeleteReview}
+                          onClick={() => {
+                            handleDeleteReview();
+                          }}
                           variant="outline"
                           className="ml-auto text-red-600 hover:text-red-700 border-red-200 hover:border-red-300"
                         >

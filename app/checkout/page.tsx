@@ -1,33 +1,25 @@
 "use client";
-import { useEffect, useState, useMemo, Suspense } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { useAuth } from "@/contexts/AuthContext";
-import { userDataService, productService, orderService } from "@/lib/supabase";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { ArrowLeft, CreditCard, MapPin, User, Phone, Mail, Loader2, ShoppingBag, CheckCircle } from "lucide-react";
+import { ArrowLeft, CreditCard, MapPin, User, Mail, Loader2, ShoppingBag, CheckCircle } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import { CartItemWithDetails, CartItem } from "@/lib/types";
+
+import { useEffect, useState, useMemo, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { CartItemWithDetails, CartItem, Product } from "@/lib/types";
+import { useAuth } from "@/contexts/AuthContext";
+import { userDataService, productService, orderService, clientAuth } from "@/lib/supabase";
 import ZohoPaymentWidget from "@/components/ZohoPaymentWidget";
+import PaymentRecoveryModal from "@/components/PaymentRecoveryModal";
+import { sendOrderPlacedEmail } from "@/lib/resend";
+import type { ShippingAddress, CustomerDetails } from "@/lib/types"
 
-interface ShippingAddress {
-  street: string;
-  city: string;
-  state: string;
-  zipCode: string;
-  country: string;
-}
-
-interface CustomerDetails {
-  name: string;
-  email: string;
-  phone: string;
-}
 
 function CheckoutPageContent() {
   const searchParams = useSearchParams();
@@ -47,24 +39,60 @@ function CheckoutPageContent() {
   const buyNowQuantity = parseInt(searchParams.get('quantity') || '1');
   const isRetry = searchParams.get('retry') === 'true';
 
-  // Form states
-  const [customerDetails, setCustomerDetails] = useState<CustomerDetails>({
-    name: '',
-    email: '',
-    phone: ''
+    // Generate payment reference ID based on next order number
+  const [paymentOrderId, setPaymentOrderId] = useState<string>('');
+    const [orderIdGenerated, setOrderIdGenerated] = useState(false);
+    
+    // Payment recovery modal state
+  const [showRecoveryModal, setShowRecoveryModal] = useState(false);
+  const [recoveryOrderId, setRecoveryOrderId] = useState<string | null>(null);
+  const [recoveryOrderAmount, setRecoveryOrderAmount] = useState<string>('0');
+  
+
+  // Form states - initialize from sessionStorage if available
+  const [customerDetails, setCustomerDetails] = useState<CustomerDetails>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = sessionStorage.getItem('checkout_customer_details');
+      if (saved) {
+        try {
+          return JSON.parse(saved);
+        } catch (e) {
+          console.error('Error parsing saved customer details:', e);
+        }
+      }
+    }
+    return { name: '', email: '', phone: '' };
   });
 
-  const [shippingAddress, setShippingAddress] = useState<ShippingAddress>({
-    street: '',
-    city: '',
-    state: '',
-    zipCode: '',
-    country: 'India'
+  const [shippingAddress, setShippingAddress] = useState<ShippingAddress>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = sessionStorage.getItem('checkout_shipping_address');
+      if (saved) {
+        try {
+          return JSON.parse(saved);
+        } catch (e) {
+          console.error('Error parsing saved shipping address:', e);
+        }
+      }
+    }
+    return { street: '', city: '', state: '', zipCode: '', country: 'India' };
   });
 
-  const [paymentMethod, setPaymentMethod] = useState('online');
+  const [paymentMethod, setPaymentMethod] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return sessionStorage.getItem('checkout_payment_method') || 'online';
+    }
+    return 'online';
+  });
+
   const [processingPayment, setProcessingPayment] = useState(false);
-  const [notes, setNotes] = useState('');
+  
+  const [notes, setNotes] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return sessionStorage.getItem('checkout_notes') || '';
+    }
+    return '';
+  });
   const [showPaymentWidget, setShowPaymentWidget] = useState(false);
   // Use localStorage to persist payment completion state across page loads
   const [paymentCompleted, setPaymentCompleted] = useState(() => {
@@ -75,9 +103,6 @@ function CheckoutPageContent() {
     return false;
   });
   
-  // Generate payment reference ID based on next order number
-  const [paymentOrderId, setPaymentOrderId] = useState<string>('');
-  const [orderIdGenerated, setOrderIdGenerated] = useState(false);
 
   // Don't use auto-refresh timeout on checkout page - payment widget has its own timeout
   // useApiTimeout is disabled here to prevent interference with payment flow
@@ -95,7 +120,7 @@ function CheckoutPageContent() {
         
         if (orders && orders.length > 0) {
           // Get the highest ID from existing orders
-          const maxId = Math.max(...orders.map(order => order.id || 0));
+          const maxId = Math.max(...orders.map((order: any) => Number(order?.id ?? 0)));
           nextOrderNumber = maxId + 1;
         }
         
@@ -112,7 +137,7 @@ function CheckoutPageContent() {
     generateOrderReference();
   }, [orderIdGenerated]);
 
-  // Check for completed payment on page load (only once)
+  // Check for pending orders and completed payments on page load
   useEffect(() => {
     // Only run if we haven't already processed payment and not in success state
     if (paymentCompleted || orderSuccess || submitting) {
@@ -120,6 +145,31 @@ function CheckoutPageContent() {
     }
 
     if (typeof window !== 'undefined') {
+      // Check for pending order from previous session
+      const pendingOrderId = sessionStorage.getItem('pending_order_id');
+      const pendingOrderTime = sessionStorage.getItem('pending_order_time');
+      
+      if (pendingOrderId && pendingOrderTime) {
+        const orderAge = new Date().getTime() - new Date(pendingOrderTime).getTime();
+        const isRecent = orderAge < 30 * 60 * 1000; // 30 minutes
+        
+        if (isRecent) {
+          console.log('[Checkout] Found pending order from previous session:', pendingOrderId);
+          // Show recovery modal with order details
+          const pendingAmount = sessionStorage.getItem('pending_payment_amount') || '0';
+          setRecoveryOrderId(pendingOrderId);
+          setRecoveryOrderAmount(pendingAmount);
+          setShowRecoveryModal(true);
+        } else {
+          // Clear stale pending order data
+          console.log('[Checkout] Pending order is too old, clearing...');
+          sessionStorage.removeItem('pending_order_id');
+          sessionStorage.removeItem('pending_order_time');
+          sessionStorage.removeItem('pending_payment_amount');
+        }
+      }
+
+      // Check for completed payment from previous session
       const storedPaymentCompleted = localStorage.getItem('payment_completed') === 'true';
       const storedPaymentId = localStorage.getItem('payment_id');
       const storedPaymentTime = localStorage.getItem('payment_time');
@@ -141,6 +191,39 @@ function CheckoutPageContent() {
       }
     }
   }, []); // Only run once on mount
+
+  // Persist form data to sessionStorage whenever it changes
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    
+    // Don't save if order is successful
+    if (orderSuccess) return;
+    
+    try {
+      sessionStorage.setItem('checkout_customer_details', JSON.stringify(customerDetails));
+      sessionStorage.setItem('checkout_shipping_address', JSON.stringify(shippingAddress));
+      sessionStorage.setItem('checkout_payment_method', paymentMethod);
+      sessionStorage.setItem('checkout_notes', notes);
+    } catch (error) {
+      console.error('Error saving form data to sessionStorage:', error);
+    }
+  }, [customerDetails, shippingAddress, paymentMethod, notes, orderSuccess]);
+
+  // Warn user before closing browser if payment widget is open
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (showPaymentWidget && !paymentCompleted) {
+        e.preventDefault();
+        e.returnValue = 'Payment is in progress. Are you sure you want to leave? Your order will be saved but you may need to verify payment manually.';
+        return e.returnValue;
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [showPaymentWidget, paymentCompleted]);
   
   // Scroll to top when order success is shown
   useEffect(() => {
@@ -174,8 +257,21 @@ function CheckoutPageContent() {
     // Skip loading if we're already showing order success
     if (orderSuccess) return;
 
-    // Prevent duplicate API calls
-    if (dataLoaded) return;
+    // Allow reloading when cart items change (but not for buyNow mode)
+    if (dataLoaded && !buyNowMode) {
+      // Check if cart items have changed
+      const currentCartStr = JSON.stringify(user.cart_items || []);
+      const lastCartStr = sessionStorage.getItem('checkout_last_cart');
+      
+      if (currentCartStr === lastCartStr) {
+        return; // No changes, skip reload
+      }
+      
+      // Cart changed, reset dataLoaded to allow reload
+      console.log('[Checkout] Cart items changed, reloading...');
+      setDataLoaded(false);
+      sessionStorage.setItem('checkout_last_cart', currentCartStr);
+    }
 
     const loadCheckoutData = async () => {
       try {
@@ -194,7 +290,8 @@ function CheckoutPageContent() {
           setIsBuyNow(true);
           console.log(`[Checkout] Buy Now mode for product ID: ${buyNowProductId}, quantity: ${buyNowQuantity}`);
           
-          const product = await productService.getProductById(parseInt(buyNowProductId));
+          const productIdNum = Number(buyNowProductId);
+          const product: any = await productService.getProductById(productIdNum);
           
           if (!product) {
             console.error('[Checkout] Product not found:', buyNowProductId);
@@ -203,10 +300,13 @@ function CheckoutPageContent() {
             return;
           }
 
-          if (!product.in_stock || product.stock_quantity < buyNowQuantity) {
+          const stockQty: number = typeof (product.stock_quantity ?? product.stock) === 'number' ? (product.stock_quantity ?? product.stock) : 0;
+          const inStock: boolean = (product.in_stock ?? product.inStock) === true;
+
+          if (!inStock || stockQty < buyNowQuantity) {
             console.error('[Checkout] Product out of stock:', { 
-              in_stock: product.in_stock, 
-              stock_quantity: product.stock_quantity, 
+              in_stock: inStock, 
+              stock_quantity: stockQty, 
               requested: buyNowQuantity 
             });
             alert('Product is out of stock or insufficient quantity available');
@@ -215,14 +315,14 @@ function CheckoutPageContent() {
           }
 
           const buyNowItem = {
-            product_id: product.id,
+            product_id: Number(product.id),
             quantity: buyNowQuantity,
             added_at: new Date().toISOString(),
-            product_name: product.name,
-            price: product.price,
-            image: product.image_url,
-            stock_quantity: product.stock_quantity,
-            in_stock: product.in_stock,
+            product_name: String(product.name || ''),
+            price: Number(product.price) || 0,
+            image: String(product.image_url || product.image || ''),
+            stock_quantity: stockQty,
+            in_stock: inStock,
           };
 
           setCartItems([buyNowItem]);
@@ -244,26 +344,26 @@ function CheckoutPageContent() {
           
           // Single API call to get all products at once
           console.log(`[Checkout] Fetching ${uniqueProductIds.length} products in single API call:`, uniqueProductIds);
-          const products = await productService.getProductsByIds(uniqueProductIds);
+          const products = await productService.getProductsByIds(uniqueProductIds) as any[];
           console.log('[Checkout] Products fetched:', products.length);
           
-          const productMap = products.reduce((acc, product) => {
+          const productMap = products.reduce((acc: Record<number, any>, product: any) => {
             if (product) {
-              acc[product.id] = product;
+              acc[product.id as number] = product;
             }
             return acc;
           }, {} as Record<number, any>);
           
           // Check for out-of-stock items
           const cartWithDetails = cartItems.map((item: CartItem) => {
-            const product = productMap[item.product_id];
+            const product = productMap[item.product_id] as any;
             return {
               ...item,
-              product_name: product?.name || 'Unknown Product',
-              price: product?.price || 0,
-              image: product?.image_url || product?.image,
-              stock_quantity: product?.stock_quantity || 0,
-              in_stock: product?.in_stock || false,
+              product_name: (product?.name as string) || 'Unknown Product',
+              price: typeof product?.price === 'number' ? product.price : 0,
+              image: String(product?.image_url || product?.image || ''),
+              stock_quantity: typeof (product?.stock_quantity ?? product?.stock) === 'number' ? (product?.stock_quantity ?? product?.stock) : 0,
+              in_stock: (product?.in_stock ?? product?.inStock) === true,
             };
           });
           
@@ -294,6 +394,12 @@ function CheckoutPageContent() {
         }
         
         setDataLoaded(true); // Mark data as loaded to prevent duplicate calls
+        
+        // Store current cart state for comparison
+        if (!buyNowMode && user.cart_items) {
+          sessionStorage.setItem('checkout_last_cart', JSON.stringify(user.cart_items));
+        }
+        
         console.log('[Checkout] Data loading completed successfully');
       } catch (error) {
         console.error('[Checkout] Error loading checkout data:', error);
@@ -303,9 +409,9 @@ function CheckoutPageContent() {
       }
     };
 
-    // Only load data once when user changes
+    // Load data when user changes or cart items change
     loadCheckoutData();
-  }, [user?.id, authLoading, buyNowMode, buyNowProductId, buyNowQuantity, orderSuccess, dataLoaded]); // Fixed dependencies
+  }, [user?.id, user?.cart_items, authLoading, buyNowMode, buyNowProductId, buyNowQuantity, orderSuccess, dataLoaded, router]); // Added user?.cart_items to dependencies
 
   // Calculate shipping based on state and order amount
   const calculateShipping = (state: string, orderTotal: number) => {
@@ -348,6 +454,32 @@ function CheckoutPageContent() {
       if (!process.env.NEXT_PUBLIC_ZOHO_ACCOUNT_ID || !process.env.NEXT_PUBLIC_ZOHO_API_KEY) {
         throw new Error('Payment gateway not configured. Please contact support.');
       }
+
+      // ✅ CRITICAL: Create pending order BEFORE opening payment widget
+      // This ensures if browser closes, order still exists and can be recovered
+      console.log('[Checkout] Creating pending order before payment...');
+      console.log("rajesh",orderData)
+      const id = sessionStorage.getItem('pending_order_id')
+      const pendingOrderData = {
+        ...orderData,
+        status: 'pending' as const,
+        payment_status: 'pending' as const,
+        notes: (orderData.notes || '') + ' [Payment in progress - awaiting confirmation]',
+        payment_id:id,
+      };
+      
+      const pendingOrder = await orderService.createOrder(pendingOrderData);
+      console.log('[Checkout] Pending order created:', pendingOrder.id);
+      
+      // Store order ID for recovery if browser closes
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('pending_order_id', String((pendingOrder as any).id));
+        sessionStorage.setItem('pending_order_time', new Date().toISOString());
+        sessionStorage.setItem('pending_payment_amount', total.toString());
+      }
+      
+      // Set order ID for potential recovery
+      setOrderId(String((pendingOrder as any).id));
 
       console.log('[Checkout] Setting show payment widget to true');
       setShowPaymentWidget(true);
@@ -402,63 +534,92 @@ function CheckoutPageContent() {
     try {
       // ✅ SECURITY: Get session token for authentication
       const token = await getSessionToken();
-      console.log('[Checkout] Got session token for payment verification');
+      console.log('[Checkout] Got session token for order creation');
       
-      // Verify payment with backend first
+      // Verify payment with backend API
+      console.log('[Checkout] Verifying payment with API...');
       const verifyResponse = await fetch('/api/payments/verify', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          ...(token && { 'Authorization': `Bearer ${token}` }) // ✅ SECURITY: Include auth token
+          ...(token && { 'Authorization': `Bearer ${token}` })
         },
         body: JSON.stringify({ 
           payment_id: paymentData.payment_id,
           payments_session_id: paymentData.payments_session_id 
         }),
       });
-
+      
       const verifyResult = await verifyResponse.json();
       console.log('[Checkout] Payment verification result:', verifyResult);
       
-      if (!verifyResponse.ok) {
-        console.error('[Checkout] Payment verification error:', verifyResponse.status);
-        throw new Error(verifyResult.error || 'Payment verification failed');
-      }
-      
-      if (verifyResponse.ok && verifyResult.success && (verifyResult.is_success || verifyResult.success)) {
-        console.log('[Checkout] Payment verified successfully, creating order...');
+      if (verifyResponse.ok && verifyResult.success) {
+        console.log('[Checkout] Payment verified successfully, updating pending order...');
         console.log('[Checkout] Verification details:', {
           success: verifyResult.success,
           is_success: verifyResult.is_success,
+          is_failed: verifyResult.is_failed,
           payment: verifyResult.payment
         });
         
-        // Payment verified successfully - create order with confirmed status
-        const orderData = {
-          customer_name: customerDetails.name,
-          customer_email: customerDetails.email,
-          customer_phone: customerDetails.phone,
-          shipping_address: shippingAddress,
-          payment_method: 'Zoho Online Payment',
-          payment_id: paymentData.payment_id,
-          payment_status: 'success' as const,
-          items: cartItems.map(item => ({
-            product_id: item.product_id,
-            product_name: item.product_name,
-            quantity: item.quantity,
-            price: item.price,
-            total: item.price * item.quantity
-          })),
-          total_amount: total,
-          status: 'confirmed' as const, // Paid orders start as confirmed
-          notes: notes || ''
-        };
+        // Get pending order ID from sessionStorage
+        const pendingOrderId = typeof window !== 'undefined' 
+          ? sessionStorage.getItem('pending_order_id')
+          : null;
+        
+        let finalOrderId: string | null = null;
+        
+        if (pendingOrderId) {
+          // Update existing pending order to confirmed
+          console.log('[Checkout] Updating pending order:', pendingOrderId);
+          try {
+            await orderService.updateOrderStatus(parseInt(pendingOrderId), {
+              status: 'confirmed',
+              payment_status: 'success',
+              payment_id: paymentData.payment_id
+            });
+            console.log('[Checkout] Pending order updated to confirmed');
+            
+            // Clear sessionStorage
+            if (typeof window !== 'undefined') {
+              sessionStorage.removeItem('pending_order_id');
+              sessionStorage.removeItem('pending_order_time');
+              sessionStorage.removeItem('pending_payment_amount');
+            }
+            
+            finalOrderId = pendingOrderId;
+          } catch (updateError) {
+            console.error('[Checkout] Failed to update pending order:', updateError);
+            // Fallback: create new order if update fails
+            throw new Error('Failed to update order. Please contact support with payment ID: ' + paymentData.payment_id);
+          }
+        } else {
+          // No pending order found - create new order (backup)
+          console.log('[Checkout] No pending order found, creating new order...');
+          const orderData = {
+            customer_name: customerDetails.name,
+            customer_email: customerDetails.email,
+            customer_phone: customerDetails.phone,
+            shipping_address: shippingAddress,
+            payment_method: 'Zoho Online Payment',
+            payment_id: paymentData.payment_id,
+            payment_status: 'success' as const,
+            items: cartItems.map(item => ({
+              product_id: item.product_id,
+              product_name: item.product_name,
+              quantity: item.quantity,
+              price: item.price,
+              total: item.price * item.quantity
+            })),
+            total_amount: total,
+            status: 'confirmed' as const,
+            notes: (notes || '') + ' [Order created after payment verification]'
+          };
 
-        console.log('[Checkout] Creating order with data:', orderData);
-
-        // Create order using existing orderService
-        const newOrder = await orderService.createOrder(orderData);
-        console.log('[Checkout] Order created successfully:', newOrder.id);
+          const newOrder = await orderService.createOrder(orderData as any);
+          console.log('[Checkout] Order created successfully:', (newOrder as any).id);
+          finalOrderId = String((newOrder as any).id);
+        }
         
         // Clear cart after successful order (only for regular cart checkout, not buy now)
         if (!isBuyNow) {
@@ -473,35 +634,39 @@ function CheckoutPageContent() {
           localStorage.removeItem('payment_completed');
           localStorage.removeItem('payment_id');
           localStorage.removeItem('payment_time');
+          
+          // Clear form data from sessionStorage after successful order
+          sessionStorage.removeItem('checkout_customer_details');
+          sessionStorage.removeItem('checkout_shipping_address');
+          sessionStorage.removeItem('checkout_payment_method');
+          sessionStorage.removeItem('checkout_notes');
         }
         
         // Show success UI immediately
-        setOrderId(newOrder.id);
+        if (finalOrderId) {
+          setOrderId(finalOrderId);
+        }
         setOrderSuccess(true);
         setSubmitting(false);
         console.log('[Checkout] Order success state set, scrolling to top');
         window.scrollTo({ top: 0, behavior: 'smooth' });
         
         // Fire and forget: send order placed email (completely async, non-blocking)
-        getSessionToken().then(token => {
-          if (token) {
-            console.log('[Checkout] Sending order confirmation email...');
-            fetch('/api/email/placed', {
-              method: 'POST',
-              headers: { 
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
-              },
-              body: JSON.stringify({
+        if (finalOrderId) {
+          (async () => {
+            try {
+              await sendOrderPlacedEmail({
                 to: customerDetails.email,
-                orderId: newOrder.id,
+                orderId: finalOrderId,
                 customerName: customerDetails.name,
                 total: total,
-                items: cartItems
-              }),
-            }).catch(err => console.error('[Checkout] Email error:', err));
-          }
-        }).catch(err => console.error('[Checkout] Failed to get session token for email:', err));
+                items: cartItems.map(i => ({ name: i.product_name, qty: i.quantity, price: i.price })),
+              })
+            } catch (err) {
+              console.error('[Checkout] Email error:', err)
+            }
+          })();
+        }
         
         return;
       } else {
@@ -539,8 +704,8 @@ function CheckoutPageContent() {
           notes: `Payment failed: ${error instanceof Error ? error.message : 'Unknown error'}`
         };
 
-        await orderService.createOrder(failedOrderData);
-        console.log('[Checkout] Failed order created for tracking');
+      await orderService.createOrder(failedOrderData as any);
+      console.log('[Checkout] Failed order created for tracking');
       } catch (orderError) {
         console.error('[Checkout] Failed to create failed order:', orderError);
       }
@@ -548,6 +713,138 @@ function CheckoutPageContent() {
       setSubmitting(false);
       setShowPaymentWidget(false);
     }
+  };
+
+  // Handle payment recovery verification
+  const handleRecoveryVerify = async () => {
+    if (!recoveryOrderId) return;
+    
+    try {
+      // Get the order to check if it's already confirmed
+      const order = await orderService.getOrderById(parseInt(recoveryOrderId));
+      
+      if (!order) {
+        throw new Error('Order not found');
+      }
+      
+      // If order is already confirmed, nothing to do
+      if (order.payment_status === 'success' && order.status === 'confirmed') {
+        console.log('[Recovery] Order already confirmed');
+        // Clear sessionStorage
+        if (typeof window !== 'undefined') {
+          sessionStorage.removeItem('pending_order_id');
+          sessionStorage.removeItem('pending_order_time');
+          sessionStorage.removeItem('pending_payment_amount');
+        }
+        return;
+      }
+      
+      // Get session token for API call
+      const token = await getSessionToken();
+      
+      if (!token) {
+        throw new Error('Authentication required');
+      }
+      
+      console.log('[Recovery] Attempting to verify payment for order:', recoveryOrderId);
+      
+      // Query Zoho Payments API to check for recent successful payments
+      // Check payments from the last 2 hours for this customer
+      
+      // Note: Zoho Payments API would need to be queried here
+      // For now, we'll use a fallback approach - check if order has payment_id in notes
+      // In production, integrate with Zoho's payment list API
+      
+      // ✅ SECURITY: Verify order ownership client-side before verifying payment
+      if (user?.email && order.customer_email) {
+        const ownershipCheck = await clientAuth.verifyOrderOwnership(recoveryOrderId, user.email);
+        
+        if (!ownershipCheck.success) {
+          throw new Error(ownershipCheck.error || 'You do not have permission to verify this order');
+        }
+      }
+      
+      // Try to find payment using order reference (paymentOrderId format)
+      const orderReference = `#${recoveryOrderId}`;
+      
+      // Call verification API to check for any matching payments
+      const verifyResponse = await fetch('/api/payments/verify', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ 
+          payments_session_id: sessionStorage.getItem('paymentsSessionId') || '',
+          // Additional params to search by customer email and amount
+          customer_email: order.customer_email,
+          amount: parseFloat(recoveryOrderAmount)
+        }),
+      });
+      
+      const verifyResult = await verifyResponse.json();
+      
+      if (verifyResponse.ok && verifyResult.is_success && verifyResult.payment) {
+        // Payment found! Update the order
+        console.log('[Recovery] Payment found, updating order:', verifyResult.payment.id);
+        
+        await orderService.updateOrderStatus(parseInt(recoveryOrderId), {
+          status: 'confirmed',
+          payment_status: 'success',
+          payment_id: verifyResult.payment.id
+        });
+        
+        // Clear sessionStorage
+        if (typeof window !== 'undefined') {
+          sessionStorage.removeItem('pending_order_id');
+          sessionStorage.removeItem('pending_order_time');
+          sessionStorage.removeItem('pending_payment_amount');
+        }
+        
+        // Clear cart
+        if (!isBuyNow) {
+          const userId = user?.user_id || user?.id;
+          if (userId) {
+            await userDataService.clearCart(userId);
+            await refreshUser();
+          }
+        }
+        
+        // Clear form data from sessionStorage after successful recovery
+        if (typeof window !== 'undefined') {
+          sessionStorage.removeItem('checkout_customer_details');
+          sessionStorage.removeItem('checkout_shipping_address');
+          sessionStorage.removeItem('checkout_payment_method');
+          sessionStorage.removeItem('checkout_notes');
+        }
+        
+        // Set success state
+        setOrderId(recoveryOrderId);
+        setOrderSuccess(true);
+        setShowRecoveryModal(false);
+        
+        return;
+      } else {
+        // No payment found
+        throw new Error('No successful payment found. If you completed the payment, please contact support with your order number.');
+      }
+      
+    } catch (error) {
+      console.error('[Recovery] Verification error:', error);
+      throw error;
+    }
+  };
+
+  // Handle dismissal of recovery modal
+  const handleRecoveryDismiss = () => {
+    // Clear pending order data
+    if (typeof window !== 'undefined') {
+      sessionStorage.removeItem('pending_order_id');
+      sessionStorage.removeItem('pending_order_time');
+      sessionStorage.removeItem('pending_payment_amount');
+    }
+    setRecoveryOrderId(null);
+    setRecoveryOrderAmount('0');
   };
 
   // Handle payment error from widget
@@ -598,7 +895,7 @@ function CheckoutPageContent() {
         notes: `Payment failed: ${error?.message || error || 'Unknown payment error'}`
       };
 
-      await orderService.createOrder(failedOrderData);
+      await orderService.createOrder(failedOrderData as any);
       console.log('Failed order created for tracking payment failure');
       alert('Payment failed. Please try again.');
     } catch (orderError) {
@@ -673,6 +970,7 @@ function CheckoutPageContent() {
           total: item.price * item.quantity
         })),
         total_amount: total,
+        payment_id:null,
         status: 'processing' as const,
         payment_status: 'pending' as const,
         notes: notes || undefined
@@ -693,7 +991,7 @@ function CheckoutPageContent() {
       } else {
         console.log('[Checkout] Creating COD order...');
         // Handle COD - create order directly
-        const newOrder = await orderService.createOrder(orderData);
+        const newOrder = await orderService.createOrder(orderData as any);
         console.log('[Checkout] COD order created successfully:', newOrder.id);
         
         // Clear cart after successful order (only for regular cart checkout, not buy now)
@@ -704,30 +1002,27 @@ function CheckoutPageContent() {
           await refreshUser();
         }
         
-        setOrderId(newOrder.id);
+        // Clear form data from sessionStorage after successful order
+        if (typeof window !== 'undefined') {
+          sessionStorage.removeItem('checkout_customer_details');
+          sessionStorage.removeItem('checkout_shipping_address');
+          sessionStorage.removeItem('checkout_payment_method');
+          sessionStorage.removeItem('checkout_notes');
+        }
+        
+        setOrderId(String(newOrder.id));
         setOrderSuccess(true);
         console.log('[Checkout] Order success state set');
         
         // Fire and forget: send order placed email
         try {
-          const token = await getSessionToken();
-          if (token) {
-            console.log('[Checkout] Sending order confirmation email...');
-            fetch('/api/email/placed', {
-              method: 'POST',
-              headers: { 
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}` // ✅ SECURITY: Include auth token
-              },
-              body: JSON.stringify({
-                to: customerDetails.email,
-                orderId: newOrder.id,
-                items: orderData.items,
-                total: orderData.total_amount,
-                customerName: customerDetails.name,
-              }),
-            }).catch(err => console.error('[Checkout] Email error:', err));
-          }
+          await sendOrderPlacedEmail({
+            to: customerDetails.email,
+            orderId: String((newOrder as any).id),
+            items: (orderData as any).items?.map((i: any) => ({ name: i.product_name || i.name, qty: i.quantity || i.qty || 1, price: Number(i.price) || 0 })) || [],
+            total: (orderData as any).total_amount,
+            customerName: customerDetails.name,
+          })
         } catch (emailError) {
           console.error('[Checkout] Failed to send email:', emailError);
         }
@@ -739,7 +1034,7 @@ function CheckoutPageContent() {
 
       // This should only run for online payments that are already completed
       console.log('[Checkout] Creating online payment order...');
-      const newOrder = await orderService.createOrder(orderData);
+      const newOrder = await orderService.createOrder(orderData as any);
       console.log('[Checkout] Online payment order created successfully:', newOrder.id);
       
       // Clear cart after successful order (only for regular cart checkout, not buy now)
@@ -750,30 +1045,27 @@ function CheckoutPageContent() {
         await refreshUser();
       }
       
-      setOrderId(newOrder.id);
+      // Clear form data from sessionStorage after successful order
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('checkout_customer_details');
+        sessionStorage.removeItem('checkout_shipping_address');
+        sessionStorage.removeItem('checkout_payment_method');
+        sessionStorage.removeItem('checkout_notes');
+      }
+      
+      setOrderId(String(newOrder.id));
       setOrderSuccess(true);
       console.log('[Checkout] Order success state set');
       
       // Fire and forget: send order placed email
       try {
-        const token = await getSessionToken();
-        if (token) {
-          console.log('[Checkout] Sending order confirmation email...');
-          fetch('/api/email/placed', {
-            method: 'POST',
-            headers: { 
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}` // ✅ SECURITY: Include auth token
-            },
-            body: JSON.stringify({
-              to: customerDetails.email,
-              orderId: newOrder.id,
-              items: orderData.items,
-              total: orderData.total_amount,
-              customerName: customerDetails.name,
-            }),
-          }).catch(err => console.error('[Checkout] Email error:', err));
-        }
+        await sendOrderPlacedEmail({
+          to: customerDetails.email,
+          orderId: String((newOrder as any).id),
+          items: (orderData as any).items?.map((i: any) => ({ name: i.product_name || i.name, qty: i.quantity || i.qty || 1, price: Number(i.price) || 0 })) || [],
+          total: (orderData as any).total_amount,
+          customerName: customerDetails.name,
+        })
       } catch (emailError) {
         console.error('[Checkout] Failed to send email:', emailError);
       }
@@ -977,7 +1269,9 @@ function CheckoutPageContent() {
                     <Input
                       id="name"
                       value={customerDetails.name}
-                      onChange={(e) => setCustomerDetails(prev => ({ ...prev, name: e.target.value }))}
+                      onChange={(e) => {
+                        setCustomerDetails(prev => ({ ...prev, name: e.target.value }));
+                      }}
                       className="glass-input"
                       placeholder="Enter your full name"
                     />
@@ -988,7 +1282,9 @@ function CheckoutPageContent() {
                       id="phone"
                       type="tel"
                       value={customerDetails.phone}
-                      onChange={(e) => setCustomerDetails(prev => ({ ...prev, phone: e.target.value }))}
+                      onChange={(e) => {
+                        setCustomerDetails(prev => ({ ...prev, phone: e.target.value }));
+                      }}
                       className="glass-input"
                       placeholder="Enter your phone number"
                       maxLength={15}
@@ -1032,7 +1328,9 @@ function CheckoutPageContent() {
                   <Input
                     id="street"
                     value={shippingAddress.street}
-                    onChange={(e) => setShippingAddress(prev => ({ ...prev, street: e.target.value }))}
+                    onChange={(e) => {
+                      setShippingAddress(prev => ({ ...prev, street: e.target.value }));
+                    }}
                     className="glass-input"
                     placeholder="House/Flat No., Street Name"
                   />
@@ -1043,14 +1341,18 @@ function CheckoutPageContent() {
                     <Input
                       id="city"
                       value={shippingAddress.city}
-                      onChange={(e) => setShippingAddress(prev => ({ ...prev, city: e.target.value }))}
+                      onChange={(e) => {
+                        setShippingAddress(prev => ({ ...prev, city: e.target.value }));
+                      }}
                       className="glass-input"
                       placeholder="City"
                     />
                   </div>
                   <div>
                     <Label htmlFor="state">State *</Label>
-                                         <Select value={shippingAddress.state} onValueChange={(value) => setShippingAddress(prev => ({ ...prev, state: value }))}>
+                                         <Select value={shippingAddress.state} onValueChange={(value) => {
+                                           setShippingAddress(prev => ({ ...prev, state: value }));
+                                         }}>
                        <SelectTrigger className="glass-input w-full">
                          <SelectValue placeholder="Select your state" />
                        </SelectTrigger>
@@ -1101,14 +1403,18 @@ function CheckoutPageContent() {
                     <Input
                       id="zipCode"
                       value={shippingAddress.zipCode}
-                      onChange={(e) => setShippingAddress(prev => ({ ...prev, zipCode: e.target.value }))}
+                      onChange={(e) => {
+                        setShippingAddress(prev => ({ ...prev, zipCode: e.target.value }));
+                      }}
                       className="glass-input"
                       placeholder="110001"
                     />
                   </div>
                   <div>
                     <Label htmlFor="country">Country</Label>
-                                         <Select value={shippingAddress.country} onValueChange={(value) => setShippingAddress(prev => ({ ...prev, country: value }))}>
+                                         <Select value={shippingAddress.country} onValueChange={(value) => {
+                                           setShippingAddress(prev => ({ ...prev, country: value }));
+                                         }}>
                        <SelectTrigger className="glass-input w-full">
                          <SelectValue />
                        </SelectTrigger>
@@ -1141,7 +1447,9 @@ function CheckoutPageContent() {
                         name="payment"
                         value="cod"
                         checked={paymentMethod === 'cod'}
-                        onChange={(e) => setPaymentMethod(e.target.value)}
+                        onChange={(e) => {
+                          setPaymentMethod(e.target.value);
+                        }}
                         className="text-green-600"
                         disabled={true}
                       />
@@ -1159,7 +1467,9 @@ function CheckoutPageContent() {
                     className={`p-4 glass-input rounded-lg cursor-pointer transition-colors ${
                       paymentMethod === 'online' ? 'ring-2 ring-green-500 bg-green-50' : ''
                     }`}
-                    onClick={() => setPaymentMethod('online')}
+                    onClick={() => {
+                      setPaymentMethod('online');
+                    }}
                   >
                     <div className="flex items-start gap-3">
                       <input
@@ -1168,7 +1478,9 @@ function CheckoutPageContent() {
                         name="payment"
                         value="online"
                         checked={paymentMethod === 'online'}
-                        onChange={(e) => setPaymentMethod(e.target.value)}
+                        onChange={(e) => {
+                          setPaymentMethod(e.target.value);
+                        }}
                         className="text-green-600 mt-1 flex-shrink-0"
                       />
                       <div className="flex-1 min-w-0">
@@ -1229,7 +1541,9 @@ function CheckoutPageContent() {
               <div className="p-4 sm:p-6">
                 <Textarea
                   value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
+                  onChange={(e) => {
+                    setNotes(e.target.value);
+                  }}
                   className="glass-input"
                   placeholder="Any special instructions for your order..."
                   rows={3}
@@ -1302,7 +1616,9 @@ function CheckoutPageContent() {
                 <Button 
                   className="w-full glass-button py-3" 
                   size="lg"
-                  onClick={handleSubmitOrder}
+                  onClick={() => {
+                    handleSubmitOrder();
+                  }}
                   disabled={submitting || processingPayment || !paymentOrderId}
                 >
                   {submitting ? (
@@ -1356,6 +1672,18 @@ function CheckoutPageContent() {
             shippingCharge={shipping} // ✅ SECURITY: Pass shipping for server-side verification
           />
         </>
+      )}
+
+      {/* Payment Recovery Modal */}
+      {recoveryOrderId && (
+        <PaymentRecoveryModal
+          open={showRecoveryModal}
+          onOpenChange={setShowRecoveryModal}
+          orderId={recoveryOrderId}
+          orderAmount={recoveryOrderAmount}
+          onVerify={handleRecoveryVerify}
+          onDismiss={handleRecoveryDismiss}
+        />
       )}
     </div>
   );

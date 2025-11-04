@@ -93,7 +93,9 @@ export default function RegisterPage() {
           </div>
           
           <button
-            onClick={handleGoogleSignUp}
+            onClick={() => {
+              handleGoogleSignUp();
+            }}
             disabled={isGoogleLoading}
             className="w-full mt-4 flex items-center justify-center px-4 py-3 border border-gray-300 rounded-full shadow-sm bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-all duration-200 hover-lift"
           >

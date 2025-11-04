@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { supabase, userDataService } from '@/lib/supabase';
+import { getSupabaseClient, userDataService } from '@/lib/supabase';
 import { CartItem } from '@/lib/types';
 import { useAuth } from './AuthContext';
 
@@ -26,6 +26,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const refreshCart = async () => {
     try {
+      const supabase = getSupabaseClient();
       const { data: { user: authUser } } = await supabase.auth.getUser();
       if (!authUser) {
         setCartItems([]);
@@ -33,7 +34,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       }
 
       const userData = await userDataService.getUserData(authUser.id);
-      setCartItems(userData?.cart_items || []);
+      setCartItems((userData?.cart_items as CartItem[]) || []);
     } catch (error) {
       console.error('Error refreshing cart:', error);
     }
@@ -42,15 +43,14 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const addToCart = async (productId: number, quantity: number) => {
     setIsLoading(true);
     try {
+      const supabase = getSupabaseClient();
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         throw new Error('User not authenticated');
       }
 
-      // Update cart in database
       await userDataService.addToCart(user.id, productId, quantity);
       
-      // Update local state optimistically
       const existingItem = cartItems.find(item => item.product_id === productId);
       if (existingItem) {
         setCartItems(prev => prev.map(item => 
@@ -66,11 +66,9 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         }]);
       }
       
-      // Refresh AuthContext user data to ensure cart page has latest data
       await refreshUser();
     } catch (error) {
       console.error('Error adding to cart:', error);
-      // Revert optimistic update on error
       await refreshCart();
       throw error;
     } finally {
@@ -81,19 +79,17 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const removeFromCart = async (productId: number) => {
     setIsLoading(true);
     try {
+      const supabase = getSupabaseClient();
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
       await userDataService.removeFromCart(user.id, productId);
       
-      // Update local state optimistically
       setCartItems(prev => prev.filter(item => item.product_id !== productId));
       
-      // Refresh AuthContext user data
       await refreshUser();
     } catch (error) {
       console.error('Error removing from cart:', error);
-      // Revert optimistic update on error
       await refreshCart();
       throw error;
     } finally {
@@ -104,21 +100,19 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const updateQuantity = async (productId: number, quantity: number) => {
     setIsLoading(true);
     try {
+      const supabase = getSupabaseClient();
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
       await userDataService.updateCartQuantity(user.id, productId, quantity);
       
-      // Update local state optimistically
       setCartItems(prev => prev.map(item => 
         item.product_id === productId ? { ...item, quantity } : item
       ));
       
-      // Refresh AuthContext user data
       await refreshUser();
     } catch (error) {
       console.error('Error updating quantity:', error);
-      // Revert optimistic update on error
       await refreshCart();
       throw error;
     } finally {
@@ -129,19 +123,17 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const clearCart = async () => {
     setIsLoading(true);
     try {
+      const supabase = getSupabaseClient();
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
       await userDataService.clearCart(user.id);
       
-      // Update local state optimistically
       setCartItems([]);
       
-      // Refresh AuthContext user data
       await refreshUser();
     } catch (error) {
       console.error('Error clearing cart:', error);
-      // Revert optimistic update on error
       await refreshCart();
       throw error;
     } finally {
@@ -151,12 +143,10 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const cartCount = cartItems.reduce((total, item) => total + item.quantity, 0);
 
-  // Sync cart items with user data from AuthContext (debounced)
   useEffect(() => {
     const timeoutId = setTimeout(() => {
       if (!authLoading) {
         if (user && user.cart_items) {
-          // Only update if cart items actually changed
           setCartItems((prevItems) => {
             const newCartStr = JSON.stringify(user.cart_items || []);
             const prevCartStr = JSON.stringify(prevItems);
@@ -164,19 +154,15 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           });
           if (!initialized) setInitialized(true);
         } else if (!user && initialized) {
-          // Only clear cart if:
-          // 1. User is definitely not logged in (!user)
-          // 2. We've already initialized (to prevent clearing before first load)
           setCartItems([]);
         } else if (!user && !initialized) {
-          // First load with no user - mark as initialized with empty cart
           setInitialized(true);
         }
       }
-    }, 100); // Small delay to batch updates
+    }, 100);
 
     return () => clearTimeout(timeoutId);
-  }, [user?.cart_items, authLoading, user, initialized]); // Depend on user object to detect logout
+  }, [user?.cart_items, authLoading, user, initialized]);
 
   const value = {
     cartItems,
