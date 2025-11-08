@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { supabase, clientAuth } from '@/lib/supabase';
 
 // Initialize Zoho Payment Widget helper function
-async function initializeZohoPaymentWidget(
+export async function initializeZohoPaymentWidget(
   amount: number,
   currency: string = 'INR',
   description: string,
@@ -67,7 +67,9 @@ async function initializeZohoPaymentWidget(
     const sessionData = await sessionResponse.json();
     const paymentsSessionId = sessionData.payments_session_id;
 
-    sessionStorage.setItem('paymentsSessionId', paymentsSessionId || '');
+    if (paymentsSessionId) {
+      sessionStorage.setItem('paymentsSessionId', paymentsSessionId);
+    }
     sessionStorage.setItem('sessionDescription', description);
 
     if (!paymentsSessionId) {
@@ -79,7 +81,7 @@ async function initializeZohoPaymentWidget(
       payments_session_id: paymentsSessionId
     };
   } catch (error) {
-    console.error('Payment initialization error:', error);
+    
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error'
@@ -100,6 +102,7 @@ interface ZohoPaymentWidgetProps {
   onSuccess: (paymentData: any) => void;
   onError: (error: any) => void;
   onClose: () => void;
+  onSessionReady: (paymentSessionId: string) => void;
   authToken?: string; // ✅ SECURITY: Authentication token
   cartItems?: Array<{ product_id: number; quantity: number }>; // ✅ SECURITY: For server-side verification
   shippingCharge?: number; // ✅ SECURITY: For server-side verification
@@ -122,8 +125,9 @@ export default function ZohoPaymentWidget({
   onClose,
   authToken,
   cartItems,
-  shippingCharge
-}: ZohoPaymentWidgetProps) {
+  shippingCharge,
+  onSessionReady,
+}: ZohoPaymentWidgetProps): React.ReactElement | null {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0); // Track retry attempts
@@ -134,7 +138,6 @@ export default function ZohoPaymentWidget({
   // Initialize widget and check payment completion
   useEffect(() => {
     const initializeWidget = async () => {
-      console.log('[PaymentWidget] Starting initialization...');
       
       // Check if payment was already completed (from localStorage)
       if (typeof window !== 'undefined') {
@@ -142,7 +145,7 @@ export default function ZohoPaymentWidget({
         const paymentId = localStorage.getItem('payment_id');
         
         if (paymentCompleted && paymentId) {
-          console.log('[PaymentWidget] Payment already completed, closing widget');
+          
           onClose();
           return;
         }
@@ -150,14 +153,14 @@ export default function ZohoPaymentWidget({
 
       // Prevent multiple initializations
       if (isInitializedRef.current) {
-        console.log('[PaymentWidget] Widget already initialized, skipping');
+        
         return;
       }
       
       isInitializedRef.current = true;
       
       try {
-        console.log('[PaymentWidget] Waiting for Zoho Payments script to load...');
+        
         // Wait for Zoho Payments script to load with better error handling
         let retries = 0;
         const maxRetries = 100; // Increased from 50 to 100 (10 seconds)
@@ -170,17 +173,17 @@ export default function ZohoPaymentWidget({
           throw new Error('Zoho Payments script failed to load after 10 seconds. Please refresh the page and try again.');
         }
 
-        console.log('[PaymentWidget] Zoho Payments script loaded successfully');
+        
 
         // ✅ SECURITY: Get the current session token
         let token = authToken;
         if (!token) {
-          console.log('[PaymentWidget] Getting session token...');
+          
           const { data } = await supabase.auth.getSession();
           token = data.session?.access_token || undefined;
         }
 
-        console.log('[PaymentWidget] Verifying order total client-side...');
+        
         // ✅ SECURITY: Verify order total client-side before creating payment session
         if (cartItems && cartItems.length > 0) {
           const verification = await clientAuth.calculateOrderTotal(cartItems, shippingCharge || 0);
@@ -194,19 +197,12 @@ export default function ZohoPaymentWidget({
           const clientAmount = parseFloat(amount.toString());
 
           if (Math.abs(expectedAmount - clientAmount) > 0.01) { // Allow 1 paisa difference for rounding
-            console.error('Amount mismatch detected:', {
-              client_amount: clientAmount,
-              database_calculated: expectedAmount,
-              difference: Math.abs(expectedAmount - clientAmount)
-            });
+            
             
             throw new Error(`Amount verification failed. Expected ₹${expectedAmount.toFixed(2)}, but got ₹${clientAmount.toFixed(2)}`);
           }
 
-          console.log('[PaymentWidget] Amount verified successfully:', {
-            amount: expectedAmount,
-            verified: true
-          });
+          
         }
 
         // Reuse pre-created session id if available
@@ -216,9 +212,9 @@ export default function ZohoPaymentWidget({
         }
 
         if (paymentsSessionId) {
-          console.log('[PaymentWidget] Reusing pre-created payment session:', paymentsSessionId);
+          onSessionReady?.(paymentsSessionId);
         } else {
-          console.log('[PaymentWidget] Creating payment session...');
+          
           // Use our centralized helper to create a payment session with timeout
           const sessionPromise = initializeZohoPaymentWidget(
             amount,
@@ -236,7 +232,7 @@ export default function ZohoPaymentWidget({
           if (!sessionResult.success) {
             // Check if authentication is required
             if (sessionResult.authUrl) {
-              console.log('[PaymentWidget] Authentication required, redirecting...');
+              
               // Redirect to authentication
               window.location.href = sessionResult.authUrl;
               return;
@@ -245,7 +241,11 @@ export default function ZohoPaymentWidget({
           }
 
           paymentsSessionId = sessionResult.payments_session_id;
-          console.log('[PaymentWidget] Payment session created:', paymentsSessionId);
+          if (paymentsSessionId) {
+            // Persist for later reads and notify parent
+            sessionStorage.setItem('paymentsSessionId', paymentsSessionId);
+            onSessionReady?.(paymentsSessionId);
+          }
 
           if (!paymentsSessionId) {
             throw new Error('Invalid session response');
@@ -253,7 +253,7 @@ export default function ZohoPaymentWidget({
         }
 
         // Initialize Zoho Payments instance
-        console.log('[PaymentWidget] Initializing Zoho Payments instance...');
+        
         const config = {
           account_id: process.env.NEXT_PUBLIC_ZOHO_ACCOUNT_ID || '',
           domain: 'IN',
@@ -280,53 +280,45 @@ export default function ZohoPaymentWidget({
           }
         };
 
-        console.log('[PaymentWidget] Initiating payment with options:', options);
+        
         
         const paymentData = await instanceRef.current.requestPaymentMethod(options);
         
-        console.log('[PaymentWidget] Payment widget response:', paymentData);
-        console.log('[PaymentWidget] Payment response details:', {
-          hasPaymentId: !!paymentData.payment_id,
-          paymentId: paymentData.payment_id,
-          code: paymentData.code,
-          status: paymentData.status,
-          allKeys: Object.keys(paymentData)
-        });
+        
         
         if (paymentData.payment_id) {
-          console.log('[PaymentWidget] Payment successful, calling onSuccess');
+          
           // Call onSuccess - parent component will handle closing/unmounting
           onSuccess(paymentData);
         } else if (paymentData.code === 'error') {
-          console.log('[PaymentWidget] Payment error, calling onError');
+          
           onError(paymentData);
         } else if (paymentData.code === 'cancelled' || paymentData.status === 'cancelled') {
           // User cancelled/closed the widget - don't treat as error
-          console.log('[PaymentWidget] Payment cancelled by user');
+          
           onClose(); // Just close, don't create order
         } else {
           // Handle any other cases (like widget closure without explicit cancellation)
-          console.log('[PaymentWidget] Payment widget closed without explicit cancellation');
-          console.log('[PaymentWidget] Unexpected payment response:', paymentData);
+          
           // ✅ SECURITY: Only treat as success if we have a definitive payment confirmation
           if (paymentData && paymentData.payment_id && paymentData.payment_id.trim() !== '') {
-            console.log('[PaymentWidget] Payment confirmed with payment_id:', paymentData.payment_id);
+            
             onSuccess(paymentData);
           } else {
-            console.warn('[PaymentWidget] No definitive payment confirmation found. Closing widget.');
+            
             onClose(); // Just close, don't create order
           }
         }
 
       } catch (err: any) {
-        console.error('[PaymentWidget] Payment widget error:', err);
+        
         
         // Reset initialization flag on error so it can be retried
         isInitializedRef.current = false;
         
         // Check if this is a timeout error
         if (err.message?.includes('timed out')) {
-          console.error('[PaymentWidget] Timeout error detected:', err.message);
+          
           setError(`Payment initialization timed out: ${err.message}. Please try again or contact support.`);
           onError(err);
         }
@@ -334,16 +326,20 @@ export default function ZohoPaymentWidget({
         else if (err.message?.toLowerCase().includes('cancelled') || 
             err.message?.toLowerCase().includes('closed') ||
             err.code === 'cancelled') {
-          console.log('[PaymentWidget] Payment widget closed by user (caught in error)');
+          
           onClose(); // Just close, don't create order
         } else {
-          console.error('[PaymentWidget] Setting error state:', err.message);
+          
           setError(err.message || 'Payment failed');
           onError(err);
         }
       } finally {
-        console.log('[PaymentWidget] Initialization completed, setting loading to false');
+        
         setIsLoading(false);
+      }
+      const [paymentsSessionId, setPaymentsSessionId] = useState(sessionStorage.getItem('paymentsSessionId') || 'hello' as string);
+      if (paymentsSessionId) {
+        onSessionReady(paymentsSessionId);
       }
     };
 
@@ -358,7 +354,7 @@ export default function ZohoPaymentWidget({
         try {
           instanceRef.current.close();
         } catch (err) {
-          console.warn('Error closing widget on unmount:', err);
+          
         }
       }
     };

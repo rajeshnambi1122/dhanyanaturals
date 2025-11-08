@@ -138,7 +138,6 @@ export default function HomePage() {
         // Set featured products
         setFeaturedProducts(featuredData || [])
       } catch (error) {
-        console.error('Error fetching homepage data:', error)
       } finally {
         setLoading(false)
       }

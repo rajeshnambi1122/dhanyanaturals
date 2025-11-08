@@ -26,14 +26,7 @@ export async function POST(request: NextRequest) {
     // No server-side Supabase price verification
 
     // Log session creation (development only)
-    if (process.env.NODE_ENV === 'development') {
-      console.log('Creating payment session:', {
-        amount,
-        currency,
-        description,
-        reference_number,
-      })
-    }
+   
     
     // Use the centralized Zoho service for creating payment sessions
     const result = await createPaymentSession(
@@ -69,7 +62,7 @@ export async function POST(request: NextRequest) {
     })
   } catch (error) {
     // Log detailed error server-side only
-    console.error('Session creation error:', error)
+  
     
     // Return generic error to client
     return NextResponse.json(

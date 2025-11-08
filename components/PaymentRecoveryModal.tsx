@@ -47,7 +47,6 @@ export default function PaymentRecoveryModal({
         router.push('/account')
       }, 2000)
     } catch (error) {
-      console.error('Payment verification failed:', error)
       setVerificationStatus('failed')
     } finally {
       setIsVerifying(false)
@@ -177,7 +176,7 @@ export default function PaymentRecoveryModal({
                 Close
               </Button>
               <Button
-                onClick={() => router.push('/account')}
+                onClick={() => router.push('/contact')}
                 className="w-full sm:w-auto glass-button"
               >
                 Contact Support

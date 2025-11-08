@@ -9,9 +9,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Plus, Edit, Trash2, Package, ShoppingCart, TrendingUp, AlertTriangle, Upload, X, Phone, MapPin, CreditCard, Truck, FileText, Clock, Calendar, DollarSign, UserCircle, Mail, Image as ImageIcon, Tag, Star } from "lucide-react"
-import { productService, orderService, authService, storageService, clientAuth, type Product, type Order, type UserData } from "@/lib/supabase"
+import { productService, orderService, authService, storageService, clientAuth} from "@/lib/supabase"
 import { useAuth } from "@/contexts/AuthContext"
-import { sendOrderStatusEmail } from "@/lib/resend"
+import { Product, Order, UserData } from "@/lib/types"
 
 export default function AdminDashboard() {
   const { getSessionToken } = useAuth()
@@ -57,25 +57,9 @@ export default function AdminDashboard() {
   useEffect(() => {
     if (isAuthorized) {
       loadData()
-      checkStorageSetup()
     }
   }, [isAuthorized])
 
-  const checkStorageSetup = async () => {
-    try {
-      setCheckingStorage(true)
-      const status = await storageService.checkStorageSetup()
-      setStorageStatus(status)
-    } catch (error) {
-      console.error('Error checking storage setup:', error)
-      setStorageStatus({
-        isReady: false,
-        message: 'Failed to check storage setup'
-      })
-    } finally {
-      setCheckingStorage(false)
-    }
-  }
 
   const handleUpdateOrderStatus = async (orderId: number, newStatus: string) => {
     setUpdatingOrderStatus(true)
@@ -97,15 +81,19 @@ export default function AdminDashboard() {
         }
 
         if (updated?.customer_email) {
-          await sendOrderStatusEmail({
-            to: updated.customer_email,
-            orderId,
-            newStatus,
-            items: (updated.items as any[])?.map((i: any) => ({ name: i.product_name || i.name, qty: i.quantity || i.qty || 1, price: Number(i.price) || 0 })) || [],
-            total: updated?.total_amount,
-            customerName: updated?.customer_name,
-            trackingNumber: updated?.tracking_number,
-          })
+          fetch('/api/emails/order-status', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              to: String(updated.customer_email || ''),
+              orderId,
+              newStatus,
+              items: (updated.items as any[])?.map((i: any) => ({ name: i.product_name || i.name, qty: i.quantity || i.qty || 1, price: Number(i.price) || 0 })) || [],
+              total: Number(updated?.total_amount ?? 0),
+              customerName: updated?.customer_name ?? undefined,
+              trackingNumber: updated?.tracking_number ?? undefined,
+            })
+          }).catch(() => {})
         }
       } catch {}
 
@@ -174,7 +162,7 @@ export default function AdminDashboard() {
         return
       }
 
-      setUser(userProfile)
+      setUser(userProfile as unknown as UserData)
       setIsAuthorized(true)
     } catch (error) {
       console.error("Auth check failed:", error)
@@ -286,8 +274,8 @@ export default function AdminDashboard() {
   const loadData = async () => {
     try {
       const [productsData, ordersData] = await Promise.all([productService.getProducts(), orderService.getOrders()])
-      setProducts(productsData)
-      setOrders(ordersData)
+      setProducts(productsData as unknown as Product[])
+      setOrders(ordersData as unknown as Order[])
     } catch (error) {
       console.error("Error loading data:", error)
     } finally {
@@ -322,7 +310,7 @@ export default function AdminDashboard() {
           tags: newProduct.tags ? newProduct.tags.split(",").map((s) => s.trim()) : undefined,
         }
 
-        await productService.createProduct(productData)
+        await productService.createProduct(productData as any)
         await loadData()
         resetForm()
         setIsAddProductOpen(false)
@@ -397,7 +385,7 @@ export default function AdminDashboard() {
           tags: newProduct.tags ? newProduct.tags.split(",").map((s) => s.trim()) : undefined,
         }
 
-        await productService.updateProduct(editingProduct.id, updates)
+        await productService.updateProduct(editingProduct.id, updates as any)
         await loadData()
         resetForm()
         setIsAddProductOpen(false)

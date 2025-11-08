@@ -7,11 +7,10 @@ function getResend() {
   }
   const key = process.env.RESEND_API_KEY;
   if (!key) {
-    throw new Error("Missing RESEND_API_KEY – set it in your server env");
+    throw new Error("Missing RESEND_API_KEY environment variable");
   }
   return new Resend(key);
 }
-
 export async function sendOrderPlacedEmail(params: {
   to: string;
   orderId?: number | string;

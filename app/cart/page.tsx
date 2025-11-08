@@ -8,7 +8,7 @@ import Image from "next/image"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { ShoppingBag, Plus, Minus, Trash2, ArrowLeft, Loader2 } from "lucide-react"
-import { CartItemWithDetails, CartItem } from "@/lib/types"
+import { CartItemWithDetails, CartItem, Product } from "@/lib/types"
 
 
 export default function CartPage() {
@@ -16,14 +16,14 @@ export default function CartPage() {
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState<number | null>(null);
   const [hasInitialized, setHasInitialized] = useState(false);
-  const [featuredProducts, setFeaturedProducts] = useState<any[]>([]);
+  const [featuredProducts, setFeaturedProducts] = useState<Product[]>([]);
   const [addingProduct, setAddingProduct] = useState<number | null>(null);
   const { user, loading: authLoading, refreshUser } = useAuth();
   const { addToCart: addToCartContext } = useCart();
   const router = useRouter();
   const fetchingRef = useRef(false);
   const initializationRef = useRef(false);
-  const productMap = useRef<Record<number, any>>({});
+  const productMap = useRef<Record<number, Product>>({});
 
 
 
@@ -79,22 +79,20 @@ export default function CartPage() {
         const productIds = cartItems.map((item: CartItem) => item.product_id);
         const uniqueProductIds: number[] = Array.from(new Set(productIds));
         
-        // Batch fetch all products
-        console.log(`[Cart] Fetching ${uniqueProductIds.length} products in single API call:`, uniqueProductIds);
-        const products = await productService.getProductsByIds(uniqueProductIds);
+        const products = await productService.getProductsByIds(uniqueProductIds) as unknown as Product[];
         
         // Create product lookup map and store in ref
-        const newProductMap = products.reduce((acc, product) => {
+        const newProductMap = products.reduce((acc: Record<number, Product>, product: Product) => {
           if (product) {
             acc[product.id] = product;
           }
           return acc;
-        }, {} as Record<number, any>);
+        }, {} as Record<number, Product>);
         productMap.current = newProductMap;
         
         // Map cart items with product details
         const cartWithDetails = cartItems.map((item: CartItem) => {
-          const product = newProductMap[item.product_id];
+          const product: Product | undefined = newProductMap[item.product_id];
           return {
             ...item,
             product_name: product?.name || 'Unknown Product',
@@ -109,7 +107,6 @@ export default function CartPage() {
         setLoading(false);
         setHasInitialized(true);
       } catch (error) {
-        console.error('Error fetching cart:', error);
         setLoading(false);
         setHasInitialized(true);
       } finally {
@@ -134,7 +131,6 @@ export default function CartPage() {
       
       // Only sync for significant changes, not minor quantity updates
       if (hasNewOrRemovedItems) {
-        console.log("Cart structure changed, updating cart page...");
         // Re-fetch cart with updated data
         const fetchUpdatedCart = async () => {
           try {
@@ -148,14 +144,14 @@ export default function CartPage() {
             const uniqueProductIds: number[] = Array.from(new Set(productIds));
             
             // Check if we already have all products in our cache
-            const missingProductIds = uniqueProductIds.filter((id: number) => !productMap.current[id]);
+            const missingProductIds = uniqueProductIds.filter((id: number) => !productMap.current[id as number]);
             
             if (missingProductIds.length > 0) {
               // Only fetch missing products
-              const products = await productService.getProductsByIds(missingProductIds);
+              const products = await productService.getProductsByIds(missingProductIds) as unknown as Product[];
               
               // Update product cache
-              products.forEach(product => {
+              products.forEach((product: Product) => {
                 if (product) {
                   productMap.current[product.id] = product;
                 }
@@ -164,7 +160,7 @@ export default function CartPage() {
             
             // Map cart items with product details using cached data
             const cartWithDetails = userCartItems.map((item: CartItem) => {
-              const product = productMap.current[item.product_id];
+              const product: Product | undefined = productMap.current[item.product_id];
               return {
                 ...item,
                 product_name: product?.name || 'Unknown Product',
@@ -177,7 +173,6 @@ export default function CartPage() {
             
             setCartItems(cartWithDetails);
           } catch (error) {
-            console.error('Error re-syncing cart:', error);
           }
         };
         
@@ -190,14 +185,13 @@ export default function CartPage() {
   useEffect(() => {
     const fetchFeaturedProducts = async () => {
       try {
-        const products = await productService.getProducts({ featured: true });
+              const products = await productService.getProducts({ featured: true }) as unknown as Product[];
         // Get 2 random featured products, excluding items already in cart
         const cartProductIds = cartItems.map(item => item.product_id);
         const availableProducts = products.filter(p => !cartProductIds.includes(p.id));
         const randomProducts = availableProducts.sort(() => Math.random() - 0.5).slice(0, 2);
         setFeaturedProducts(randomProducts);
       } catch (error) {
-        console.error('Error fetching featured products:', error);
       }
     };
 
@@ -243,14 +237,13 @@ export default function CartPage() {
       
       // Cart updated successfully
     } catch (error) {
-      console.error('Error updating quantity:', error);
       alert('Failed to update quantity');
       
       // Revert local state on error
       const userData = await userDataService.getUserData(user.user_id || user.id);
       if (userData?.cart_items) {
         const cartWithDetails = userData.cart_items.map((item: CartItem) => {
-          const product = productMap.current[item.product_id];
+          const product: Product | undefined = productMap.current[item.product_id];
           return {
             ...item,
             product_name: product?.name || 'Unknown Product',
@@ -281,14 +274,13 @@ export default function CartPage() {
       // Refresh AuthContext so checkout page can see the updated cart
       await refreshUser();
     } catch (error) {
-      console.error('Error removing item:', error);
       alert('Failed to remove item');
       
       // Revert local state on error
       const userData = await userDataService.getUserData(user.user_id || user.id);
       if (userData?.cart_items) {
         const cartWithDetails = userData.cart_items.map((item: CartItem) => {
-          const product = productMap.current[item.product_id];
+          const product: Product | undefined = productMap.current[item.product_id];
           return {
             ...item,
             product_name: product?.name || 'Unknown Product',
@@ -318,14 +310,13 @@ export default function CartPage() {
       
       // No need to refresh user - CartContext will handle the sync automatically
     } catch (error) {
-      console.error('Error clearing cart:', error);
       alert('Failed to clear cart');
       
       // Revert local state on error
       const userData = await userDataService.getUserData(user.user_id || user.id);
       if (userData?.cart_items) {
         const cartWithDetails = userData.cart_items.map((item: CartItem) => {
-          const product = productMap.current[item.product_id];
+          const product: Product | undefined = productMap.current[item.product_id];
           return {
             ...item,
             product_name: product?.name || 'Unknown Product',
@@ -351,7 +342,6 @@ export default function CartPage() {
       // Remove from featured products after adding
       setFeaturedProducts(prev => prev.filter(p => p.id !== productId));
     } catch (error) {
-      console.error('Error adding recommended product:', error);
       alert('Failed to add product to cart');
     } finally {
       setAddingProduct(null);

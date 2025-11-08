@@ -17,9 +17,10 @@ import { useAuth } from "@/contexts/AuthContext";
 import { userDataService, productService, orderService, clientAuth } from "@/lib/supabase";
 import ZohoPaymentWidget from "@/components/ZohoPaymentWidget";
 import PaymentRecoveryModal from "@/components/PaymentRecoveryModal";
-import { sendOrderPlacedEmail } from "@/lib/resend";
 import type { ShippingAddress, CustomerDetails } from "@/lib/types"
 
+import{ initializeZohoPaymentWidget } from "@/components/ZohoPaymentWidget";
+import { supabase } from '@/lib/supabase';
 
 function CheckoutPageContent() {
   const searchParams = useSearchParams();
@@ -57,7 +58,6 @@ function CheckoutPageContent() {
         try {
           return JSON.parse(saved);
         } catch (e) {
-          console.error('Error parsing saved customer details:', e);
         }
       }
     }
@@ -71,7 +71,6 @@ function CheckoutPageContent() {
         try {
           return JSON.parse(saved);
         } catch (e) {
-          console.error('Error parsing saved shipping address:', e);
         }
       }
     }
@@ -127,7 +126,6 @@ function CheckoutPageContent() {
         setPaymentOrderId(`#${nextOrderNumber}`);
         setOrderIdGenerated(true);
       } catch (error) {
-        console.error('Error generating order reference:', error);
         // Fallback to timestamp-based ID if fetch fails
         setPaymentOrderId(`#ORDER_${Date.now()}`);
         setOrderIdGenerated(true);
@@ -154,7 +152,6 @@ function CheckoutPageContent() {
         const isRecent = orderAge < 30 * 60 * 1000; // 30 minutes
         
         if (isRecent) {
-          console.log('[Checkout] Found pending order from previous session:', pendingOrderId);
           // Show recovery modal with order details
           const pendingAmount = sessionStorage.getItem('pending_payment_amount') || '0';
           setRecoveryOrderId(pendingOrderId);
@@ -162,7 +159,6 @@ function CheckoutPageContent() {
           setShowRecoveryModal(true);
         } else {
           // Clear stale pending order data
-          console.log('[Checkout] Pending order is too old, clearing...');
           sessionStorage.removeItem('pending_order_id');
           sessionStorage.removeItem('pending_order_time');
           sessionStorage.removeItem('pending_payment_amount');
@@ -179,10 +175,8 @@ function CheckoutPageContent() {
         const isRecent = new Date().getTime() - new Date(storedPaymentTime).getTime() < 10 * 60 * 1000;
         
         if (isRecent) {
-          console.log('[Checkout] Found recent completed payment, auto-verifying:', storedPaymentId);
           handlePaymentSuccess({ payment_id: storedPaymentId });
         } else {
-          console.log('[Checkout] Stale payment data found, clearing...');
           // Clear stale payment data
           localStorage.removeItem('payment_completed');
           localStorage.removeItem('payment_id');
@@ -205,7 +199,6 @@ function CheckoutPageContent() {
       sessionStorage.setItem('checkout_payment_method', paymentMethod);
       sessionStorage.setItem('checkout_notes', notes);
     } catch (error) {
-      console.error('Error saving form data to sessionStorage:', error);
     }
   }, [customerDetails, shippingAddress, paymentMethod, notes, orderSuccess]);
 
@@ -268,7 +261,6 @@ function CheckoutPageContent() {
       }
       
       // Cart changed, reset dataLoaded to allow reload
-      console.log('[Checkout] Cart items changed, reloading...');
       setDataLoaded(false);
       sessionStorage.setItem('checkout_last_cart', currentCartStr);
     }
@@ -276,7 +268,6 @@ function CheckoutPageContent() {
     const loadCheckoutData = async () => {
       try {
         setLoading(true);
-        console.log('[Checkout] Starting data load for user:', user.id);
         
         // Pre-populate customer details from user data
         setCustomerDetails({
@@ -288,13 +279,11 @@ function CheckoutPageContent() {
         if (buyNowMode && buyNowProductId) {
           // Buy Now mode - load single product
           setIsBuyNow(true);
-          console.log(`[Checkout] Buy Now mode for product ID: ${buyNowProductId}, quantity: ${buyNowQuantity}`);
           
           const productIdNum = Number(buyNowProductId);
           const product: any = await productService.getProductById(productIdNum);
           
           if (!product) {
-            console.error('[Checkout] Product not found:', buyNowProductId);
             alert('Product not found');
             router.push('/products');
             return;
@@ -326,14 +315,12 @@ function CheckoutPageContent() {
           };
 
           setCartItems([buyNowItem]);
-          console.log('[Checkout] Buy Now item loaded:', buyNowItem);
         } else {
           // Regular cart mode
           setIsBuyNow(false);
           const cartItems = user.cart_items || [];
           
           if (cartItems.length === 0) {
-            console.log('[Checkout] No cart items found, redirecting to cart');
             router.push('/cart');
             return;
           }
@@ -436,78 +423,113 @@ function CheckoutPageContent() {
   // Shipping is now automatically recalculated via useMemo when state or cart changes
 
   // Handle online payment with Zoho Widget
-  const handleOnlinePayment = async (orderData: any) => {
-    console.log('[Checkout] ===== HANDLE ONLINE PAYMENT CALLED =====');
-    console.log('[Checkout] Payment completed:', paymentCompleted);
-    console.log('[Checkout] Processing payment:', processingPayment);
-    console.log('[Checkout] Show payment widget:', showPaymentWidget);
-    
-    if (paymentCompleted) {
-      console.log('[Checkout] Payment already completed, returning');
-      return;
+// Handle online payment with Zoho Widget
+const handleOnlinePayment = async (orderData: any) => {
+  console.log('[Checkout] ===== HANDLE ONLINE PAYMENT CALLED =====');
+  console.log('[Checkout] Payment completed:', paymentCompleted);
+  console.log('[Checkout] Processing payment:', processingPayment);
+  console.log('[Checkout] Show payment widget:', showPaymentWidget);
+  
+  if (paymentCompleted) {
+    console.log('[Checkout] Payment already completed, returning');
+    return;
+  }
+
+  setProcessingPayment(true);
+  console.log('[Checkout] Set processing payment to true');
+  
+  try {
+    if (!process.env.NEXT_PUBLIC_ZOHO_ACCOUNT_ID || !process.env.NEXT_PUBLIC_ZOHO_API_KEY) {
+      throw new Error('Payment gateway not configured. Please contact support.');
     }
 
-    setProcessingPayment(true);
-    console.log('[Checkout] Set processing payment to true');
+    // ✅ STEP 1: Create payment session FIRST
+    console.log('[Checkout] Creating payment session...');
     
-    try {
-      if (!process.env.NEXT_PUBLIC_ZOHO_ACCOUNT_ID || !process.env.NEXT_PUBLIC_ZOHO_API_KEY) {
-        throw new Error('Payment gateway not configured. Please contact support.');
-      }
+    // Get auth token
+    const { data } = await supabase.auth.getSession();
+    const token = data.session?.access_token;
+    
+    const sessionResult = await initializeZohoPaymentWidget(
+      total,
+      'INR',
+      `Dhanya Naturals - Order ${paymentOrderId}`,
+      paymentOrderId,
+      customerDetails,
+      token,
+      cartItems.map(item => ({ 
+        product_id: item.product_id, 
+        quantity: item.quantity 
+      })),
+      shipping
+    );
 
-      // ✅ CRITICAL: Create pending order BEFORE opening payment widget
-      // This ensures if browser closes, order still exists and can be recovered
-      console.log('[Checkout] Creating pending order before payment...');
-      console.log("rajesh",orderData)
-      const id = sessionStorage.getItem('pending_order_id')
-      const pendingOrderData = {
-        ...orderData,
-        status: 'pending' as const,
-        payment_status: 'pending' as const,
-        notes: (orderData.notes || '') + ' [Payment in progress - awaiting confirmation]',
-        payment_id:id,
-      };
-      
-      const pendingOrder = await orderService.createOrder(pendingOrderData);
-      console.log('[Checkout] Pending order created:', pendingOrder.id);
-      
-      // Store order ID for recovery if browser closes
-      if (typeof window !== 'undefined') {
-        sessionStorage.setItem('pending_order_id', String((pendingOrder as any).id));
-        sessionStorage.setItem('pending_order_time', new Date().toISOString());
-        sessionStorage.setItem('pending_payment_amount', total.toString());
+    if (!sessionResult.success) {
+      // Check if authentication is required
+      if (sessionResult.authUrl) {
+        console.log('[Checkout] Authentication required, redirecting...');
+        window.location.href = sessionResult.authUrl;
+        return;
       }
-      
-      // Set order ID for potential recovery
-      setOrderId(String((pendingOrder as any).id));
-
-      console.log('[Checkout] Setting show payment widget to true');
-      setShowPaymentWidget(true);
-      setProcessingPayment(false);
-      console.log('[Checkout] Payment widget should now be visible');
-
-      
-    } catch (error) {
-      console.error('Payment error:', error);
-      
-      // Show more specific error message
-      let errorMessage = 'Failed to initiate payment. Please try again or contact support.';
-      
-      if (error instanceof Error) {
-        if (error.message.includes('Payment gateway not configured')) {
-          errorMessage = 'Online payments are temporarily unavailable. Please contact support.';
-        } else if (error.message.includes('Invalid credentials')) {
-          errorMessage = 'Payment service configuration error. Please contact support.';
-        } else if (error.message.includes('Failed to create payment')) {
-          errorMessage = 'Unable to process payment at this time. Please try again later or contact support.';
-        }
-      }
-      
-      alert(errorMessage);
-      setProcessingPayment(false);
+      throw new Error(sessionResult.error || 'Failed to create payment session');
     }
-  };
 
+    const paymentsSessionId = sessionResult.payments_session_id;
+    console.log('[Checkout] Payment session created:', paymentsSessionId);
+
+    if (!paymentsSessionId) {
+      throw new Error('Invalid payment session response');
+    }
+
+    // ✅ STEP 2: Now create pending order WITH the payment session ID
+    console.log('[Checkout] Creating pending order with payment session ID...');
+    const pendingOrderData = {
+      ...orderData,
+      status: 'pending' as const,
+      payment_status: 'pending' as const,
+      notes: (orderData.notes || '') + ' [Payment in progress - awaiting confirmation]',
+      payment_id: paymentsSessionId, // Now we have the actual session ID!
+    };
+    
+    const pendingOrder = await orderService.createOrder(pendingOrderData);
+    console.log('[Checkout] Pending order created:', pendingOrder.id);
+    
+    // Store order ID and session ID for recovery if browser closes
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('pending_order_id', String((pendingOrder as any).id));
+      sessionStorage.setItem('pending_order_time', new Date().toISOString());
+      sessionStorage.setItem('pending_payment_amount', total.toString());
+      sessionStorage.setItem('paymentsSessionId', paymentsSessionId);
+    }
+    
+    // Set order ID for potential recovery
+    setOrderId(String((pendingOrder as any).id));
+
+    console.log('[Checkout] Setting show payment widget to true');
+    setShowPaymentWidget(true);
+    setProcessingPayment(false);
+    console.log('[Checkout] Payment widget should now be visible');
+    
+  } catch (error) {
+    console.error('Payment error:', error);
+    
+    // Show more specific error message
+    let errorMessage = 'Failed to initiate payment. Please try again or contact support.';
+    
+    if (error instanceof Error) {
+      if (error.message.includes('Payment gateway not configured')) {
+        errorMessage = 'Online payments are temporarily unavailable. Please contact support.';
+      } else if (error.message.includes('Invalid credentials')) {
+        errorMessage = 'Payment service configuration error. Please contact support.';
+      } else if (error.message.includes('Failed to create payment')) {
+        errorMessage = 'Unable to process payment at this time. Please try again later or contact support.';
+      }
+    }
+    
+    alert(errorMessage);
+    setProcessingPayment(false);
+  }
+};
   // Handle successful payment from widget
   const handlePaymentSuccess = async (paymentData: any) => {
     console.log('[Checkout] ===== PAYMENT SUCCESS CALLBACK TRIGGERED =====');
@@ -576,7 +598,8 @@ function CheckoutPageContent() {
             await orderService.updateOrderStatus(parseInt(pendingOrderId), {
               status: 'confirmed',
               payment_status: 'success',
-              payment_id: paymentData.payment_id
+              payment_id: paymentData.payment_id,
+              notes: (notes || '') + ' [Order created after payment verification]'
             });
             console.log('[Checkout] Pending order updated to confirmed');
             
@@ -651,21 +674,19 @@ function CheckoutPageContent() {
         console.log('[Checkout] Order success state set, scrolling to top');
         window.scrollTo({ top: 0, behavior: 'smooth' });
         
-        // Fire and forget: send order placed email (completely async, non-blocking)
+        // Fire and forget: send order placed email via server API
         if (finalOrderId) {
-          (async () => {
-            try {
-              await sendOrderPlacedEmail({
-                to: customerDetails.email,
-                orderId: finalOrderId,
-                customerName: customerDetails.name,
-                total: total,
-                items: cartItems.map(i => ({ name: i.product_name, qty: i.quantity, price: i.price })),
-              })
-            } catch (err) {
-              console.error('[Checkout] Email error:', err)
-            }
-          })();
+          fetch('/api/emails/order-placed', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              to: String(customerDetails.email || ''),
+              orderId: finalOrderId,
+              customerName: customerDetails.name,
+              total: Number(total ?? 0),
+              items: cartItems.map(i => ({ name: i.product_name, qty: i.quantity, price: i.price })),
+            })
+          }).catch(() => {});
         }
         
         return;
@@ -970,7 +991,7 @@ function CheckoutPageContent() {
           total: item.price * item.quantity
         })),
         total_amount: total,
-        payment_id:null,
+        payment_id:"cod",
         status: 'processing' as const,
         payment_status: 'pending' as const,
         notes: notes || undefined
@@ -1014,18 +1035,18 @@ function CheckoutPageContent() {
         setOrderSuccess(true);
         console.log('[Checkout] Order success state set');
         
-        // Fire and forget: send order placed email
-        try {
-          await sendOrderPlacedEmail({
-            to: customerDetails.email,
+        // Fire and forget: send order placed email via server API
+        fetch('/api/emails/order-placed', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            to: String(customerDetails.email || ''),
             orderId: String((newOrder as any).id),
             items: (orderData as any).items?.map((i: any) => ({ name: i.product_name || i.name, qty: i.quantity || i.qty || 1, price: Number(i.price) || 0 })) || [],
-            total: (orderData as any).total_amount,
+            total: Number((orderData as any).total_amount ?? 0),
             customerName: customerDetails.name,
           })
-        } catch (emailError) {
-          console.error('[Checkout] Failed to send email:', emailError);
-        }
+        }).catch(() => {});
         
         // Scroll to top on mobile to show success message
         window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1057,18 +1078,18 @@ function CheckoutPageContent() {
       setOrderSuccess(true);
       console.log('[Checkout] Order success state set');
       
-      // Fire and forget: send order placed email
-      try {
-        await sendOrderPlacedEmail({
-          to: customerDetails.email,
+      // Fire and forget: send order placed email via server API
+      fetch('/api/emails/order-placed', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: String(customerDetails.email || ''),
           orderId: String((newOrder as any).id),
           items: (orderData as any).items?.map((i: any) => ({ name: i.product_name || i.name, qty: i.quantity || i.qty || 1, price: Number(i.price) || 0 })) || [],
-          total: (orderData as any).total_amount,
+          total: Number((orderData as any).total_amount ?? 0),
           customerName: customerDetails.name,
         })
-      } catch (emailError) {
-        console.error('[Checkout] Failed to send email:', emailError);
-      }
+      }).catch(() => {});
       
       // Scroll to top on mobile to show success message
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1664,6 +1685,12 @@ function CheckoutPageContent() {
             onSuccess={handlePaymentSuccess}
             onError={handlePaymentError}
             onClose={() => setShowPaymentWidget(false)}
+            onSessionReady={(paymentSessionId) => {
+              console.log('[Checkout] Payment session ID:', paymentSessionId);
+              if (paymentSessionId) {
+                sessionStorage.setItem('paymentsSessionId', paymentSessionId);
+              }
+            }}
             authToken={undefined} // Will be fetched by widget when needed
             cartItems={cartItems.map(item => ({ 
               product_id: item.product_id, 

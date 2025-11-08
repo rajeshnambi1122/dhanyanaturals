@@ -7,13 +7,7 @@ export async function POST(request: NextRequest) {
     const { payment_id, payments_session_id, order_id } = body
 
     // Log verification request (development only)
-    if (process.env.NODE_ENV === 'development') {
-      console.log('Payment verification request:', { 
-        payment_id, 
-        payments_session_id, 
-        order_id,
-      });
-    }
+
 
     if (!payment_id && !payments_session_id) {
       return NextResponse.json(
@@ -48,14 +42,6 @@ export async function POST(request: NextRequest) {
     // No server-side Supabase operations
 
     // Log successful verification (development only)
-    if (process.env.NODE_ENV === 'development') {
-      console.log('Payment verification successful:', {
-        payment_id: result.payment?.id,
-        is_success: result.is_success,
-        is_failed: result.is_failed,
-        order_updated: order_id ? true : false
-      });
-    }
     
     // Return payment verification result
     return NextResponse.json({
@@ -69,7 +55,6 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     // Log detailed error server-side only
-    console.error('Payment verification error:', error)
     
     // ✅ SECURITY: Return generic error to client (don't expose internal details)
     return NextResponse.json(

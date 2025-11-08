@@ -20,7 +20,6 @@ export default function Header() {
         window.location.href = "/login";
       }
     } catch (error) {
-      console.error("Sign out failed:", error);
     }
   };
 

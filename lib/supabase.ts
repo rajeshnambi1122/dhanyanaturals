@@ -1,5 +1,3 @@
-"use client"
-
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { Product, OrderItem, Order, CartItem, WishlistItem, Review, UserData } from "./types"
 // Type definitions (moved from supabase.ts)

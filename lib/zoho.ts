@@ -271,8 +271,7 @@ export async function createPaymentSession(
       },
       accessToken
     );
-    
-    console.log("rajesh",accessToken)
+  
     const text = await response.text();
     
     if (!response.ok) {
