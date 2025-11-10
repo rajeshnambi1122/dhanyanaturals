@@ -99,6 +99,7 @@ interface ZohoPaymentWidgetProps {
     phone: string;
   };
   orderId: string;
+  paymentsSessionId: string;
   onSuccess: (paymentData: any) => void;
   onError: (error: any) => void;
   onClose: () => void;
@@ -106,6 +107,7 @@ interface ZohoPaymentWidgetProps {
   authToken?: string; // ✅ SECURITY: Authentication token
   cartItems?: Array<{ product_id: number; quantity: number }>; // ✅ SECURITY: For server-side verification
   shippingCharge?: number; // ✅ SECURITY: For server-side verification
+  shippingAddress: { state: string; city?: string; zip?: string }; // ✅ SECURITY: For shipping validation
 }
 
 declare global {
@@ -120,12 +122,14 @@ export default function ZohoPaymentWidget({
   description,
   customerDetails,
   orderId,
+  paymentsSessionId,
   onSuccess,
   onError,
   onClose,
   authToken,
   cartItems,
   shippingCharge,
+  shippingAddress,
   onSessionReady,
 }: ZohoPaymentWidgetProps): React.ReactElement | null {
   const [isLoading, setIsLoading] = useState(true);
@@ -183,75 +187,16 @@ export default function ZohoPaymentWidget({
           token = data.session?.access_token || undefined;
         }
 
-        
-        // ✅ SECURITY: Verify order total client-side before creating payment session
-        if (cartItems && cartItems.length > 0) {
-          const verification = await clientAuth.calculateOrderTotal(cartItems, shippingCharge || 0);
-          
-          if (!verification.success) {
-            throw new Error(verification.error || 'Failed to verify order amount');
-          }
+  
+// Use the session ID passed from parent (already created)
+console.log('[ZohoPaymentWidget] Using pre-created session ID:', paymentsSessionId);
 
-          // Check if client-sent amount matches database-calculated amount
-          const expectedAmount = verification.total || 0;
-          const clientAmount = parseFloat(amount.toString());
+if (!paymentsSessionId) {
+  throw new Error('No payment session ID provided');
+}
 
-          if (Math.abs(expectedAmount - clientAmount) > 0.01) { // Allow 1 paisa difference for rounding
-            
-            
-            throw new Error(`Amount verification failed. Expected ₹${expectedAmount.toFixed(2)}, but got ₹${clientAmount.toFixed(2)}`);
-          }
-
-          
-        }
-
-        // Reuse pre-created session id if available
-        let paymentsSessionId: string | undefined = undefined;
-        if (typeof window !== 'undefined') {
-          paymentsSessionId = sessionStorage.getItem('paymentsSessionId') || undefined;
-        }
-
-        if (paymentsSessionId) {
-          onSessionReady?.(paymentsSessionId);
-        } else {
-          
-          // Use our centralized helper to create a payment session with timeout
-          const sessionPromise = initializeZohoPaymentWidget(
-            amount,
-            currency,
-            description,
-            orderId,
-            customerDetails,
-            token, // ✅ SECURITY: Pass authentication token
-            cartItems, // ✅ SECURITY: Pass cart items for server-side verification
-            shippingCharge // ✅ SECURITY: Pass shipping charge for server-side verification
-          );
-
-          const sessionResult = await sessionPromise;
-
-          if (!sessionResult.success) {
-            // Check if authentication is required
-            if (sessionResult.authUrl) {
-              
-              // Redirect to authentication
-              window.location.href = sessionResult.authUrl;
-              return;
-            }
-            throw new Error(sessionResult.error || 'Failed to create payment session');
-          }
-
-          paymentsSessionId = sessionResult.payments_session_id;
-          if (paymentsSessionId) {
-            // Persist for later reads and notify parent
-            sessionStorage.setItem('paymentsSessionId', paymentsSessionId);
-            onSessionReady?.(paymentsSessionId);
-          }
-
-          if (!paymentsSessionId) {
-            throw new Error('Invalid session response');
-          }
-        }
-
+// Notify parent that session is ready (it was created by parent)
+onSessionReady?.(paymentsSessionId);
         // Initialize Zoho Payments instance
         
         const config = {
@@ -337,16 +282,11 @@ export default function ZohoPaymentWidget({
         
         setIsLoading(false);
       }
-      const [paymentsSessionId, setPaymentsSessionId] = useState(sessionStorage.getItem('paymentsSessionId') || 'hello' as string);
-      if (paymentsSessionId) {
-        onSessionReady(paymentsSessionId);
-      }
     };
 
     initializeWidget();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [amount, currency, description, orderId, retryCount]); // Added retryCount to trigger re-initialization
-
+  }, [amount, currency, description, orderId, retryCount, paymentsSessionId, customerDetails, cartItems, shippingCharge, authToken]);
   // Cleanup on unmount
   useEffect(() => {
     return () => {

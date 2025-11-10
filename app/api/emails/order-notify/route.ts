@@ -1,20 +1,15 @@
 import { NextResponse } from 'next/server'
-import { sendOrderPlacedEmail } from '@/lib/resend'
+import { sendOrderNotifyEmail } from '@/lib/resend'
 
 export async function POST(req: Request) {
   try {
     const body = await req.json()
-    const { to, orderId, customerName, total, items } = body || {}
+    const { orderId, customerName, total, items } = body || {}
 
-    if (!to || typeof to !== 'string') {
-      return NextResponse.json({ error: 'Missing to' }, { status: 400 })
-    }
-
-    await sendOrderPlacedEmail({ to, orderId, customerName, total, items })
+    await sendOrderNotifyEmail({orderId, customerName, total, items })
     return NextResponse.json({ ok: true })
   } catch (err: any) {
     console.error('Failed to send order placed email:', err)
     return NextResponse.json({ error: 'Failed to send email' }, { status: 500 })
   }}
-
 

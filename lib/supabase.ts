@@ -429,6 +429,7 @@ export const orderService = {
     status?: "pending" | "confirmed" | "shipped" | "delivered" | "cancelled"
     payment_status?: "pending" | "success" | "failed" | "cancelled"
     payment_id?: string
+    payment_session_id?: string
     tracking_number?: string
     notes?: string
   }) {
@@ -1198,7 +1199,8 @@ export const clientAuth = {
    */
   async calculateOrderTotal(
     items: Array<{ product_id: number; quantity: number }>,
-    shippingCharge: number = 0
+    shippingAddress: { state: string },
+    clientSentShipping?: number
   ) {
     try {
       // Get product IDs
@@ -1206,11 +1208,8 @@ export const clientAuth = {
 
       if (productIds.length === 0) {
         return {
-          success: true,
-          subtotal: 0,
-          shipping: shippingCharge,
-          total: shippingCharge,
-          items: []
+          success: false,
+          error: 'No items in cart'
         }
       }
 
@@ -1266,11 +1265,49 @@ export const clientAuth = {
         })
       }
 
+      // ✅ CALCULATE shipping based on rules (not trusting client)
+      let calculatedShipping = 0;
+      
+      // Free shipping above ₹999
+      if (subtotal > 999) {
+        calculatedShipping = 0;
+      } else {
+        // State-based shipping
+        const state = shippingAddress.state.toLowerCase().trim();
+        if (state === 'tamil nadu' || state === 'tn') {
+          calculatedShipping = 50;  // ✅ Fixed: ₹50 for TN
+        } else {
+          calculatedShipping = 80;  // ₹80 for rest of India
+        }
+      }
+
+      // ✅ VALIDATE: If client sent shipping charge, verify it matches
+      if (clientSentShipping !== undefined && clientSentShipping !== null) {
+        const shippingDifference = Math.abs(clientSentShipping - calculatedShipping);
+        
+        if (shippingDifference > 0.01) {
+          console.error('[Security] Shipping charge mismatch!', {
+            calculated: calculatedShipping,
+            clientSent: clientSentShipping,
+            difference: shippingDifference,
+            state: shippingAddress.state,
+            subtotal
+          });
+          
+          return {
+            success: false,
+            error: `Shipping charge validation failed. Expected ₹${calculatedShipping}, but got ₹${clientSentShipping}. Please refresh and try again.`
+          }
+        }
+      }
+
+      const calculatedTotal = subtotal + calculatedShipping;
+
       return {
         success: true,
         subtotal,
-        shipping: shippingCharge,
-        total: subtotal + shippingCharge,
+        shipping: calculatedShipping,  // ✅ Return calculated shipping (not client-sent)
+        total: calculatedTotal,
         items: itemsWithPrices
       }
     } catch (error) {

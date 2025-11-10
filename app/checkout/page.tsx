@@ -49,6 +49,7 @@ function CheckoutPageContent() {
   const [recoveryOrderId, setRecoveryOrderId] = useState<string | null>(null);
   const [recoveryOrderAmount, setRecoveryOrderAmount] = useState<string>('0');
   
+  const [paymentSessionId, setPaymentSessionId] = useState<string | null>(null);
 
   // Form states - initialize from sessionStorage if available
   const [customerDetails, setCustomerDetails] = useState<CustomerDetails>(() => {
@@ -202,22 +203,6 @@ function CheckoutPageContent() {
     }
   }, [customerDetails, shippingAddress, paymentMethod, notes, orderSuccess]);
 
-  // Warn user before closing browser if payment widget is open
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (showPaymentWidget && !paymentCompleted) {
-        e.preventDefault();
-        e.returnValue = 'Payment is in progress. Are you sure you want to leave? Your order will be saved but you may need to verify payment manually.';
-        return e.returnValue;
-      }
-    };
-
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [showPaymentWidget, paymentCompleted]);
-  
   // Scroll to top when order success is shown
   useEffect(() => {
     if (orderSuccess) {
@@ -442,6 +427,31 @@ const handleOnlinePayment = async (orderData: any) => {
     if (!process.env.NEXT_PUBLIC_ZOHO_ACCOUNT_ID || !process.env.NEXT_PUBLIC_ZOHO_API_KEY) {
       throw new Error('Payment gateway not configured. Please contact support.');
     }
+    console.log('[Checkout] Validating order amounts...');
+    
+    const verification = await clientAuth.calculateOrderTotal(
+      cartItems.map(item => ({ 
+        product_id: item.product_id, 
+        quantity: item.quantity 
+      })),
+      shippingAddress,  // Pass full address
+      shipping  // Pass for validation
+    );
+
+    if (!verification.success) {
+      throw new Error(verification.error || 'Order validation failed');
+    }
+
+    // Check if amounts match
+    const expectedTotal = verification.total || 0;
+    if (Math.abs(expectedTotal - total) > 0.01) {
+      throw new Error(
+        `Price mismatch detected. Expected ₹${expectedTotal.toFixed(2)}, ` +
+        `but got ₹${total.toFixed(2)}. Please refresh the page and try again.`
+      );
+    }
+
+    console.log('[Checkout] Validation passed. Expected total:', expectedTotal);
 
     // ✅ STEP 1: Create payment session FIRST
     console.log('[Checkout] Creating payment session...');
@@ -477,9 +487,11 @@ const handleOnlinePayment = async (orderData: any) => {
     const paymentsSessionId = sessionResult.payments_session_id;
     console.log('[Checkout] Payment session created:', paymentsSessionId);
 
+
     if (!paymentsSessionId) {
       throw new Error('Invalid payment session response');
     }
+    setPaymentSessionId(paymentsSessionId); 
 
     // ✅ STEP 2: Now create pending order WITH the payment session ID
     console.log('[Checkout] Creating pending order with payment session ID...');
@@ -488,7 +500,8 @@ const handleOnlinePayment = async (orderData: any) => {
       status: 'pending' as const,
       payment_status: 'pending' as const,
       notes: (orderData.notes || '') + ' [Payment in progress - awaiting confirmation]',
-      payment_id: paymentsSessionId, // Now we have the actual session ID!
+      payment_id: null, // Now we have the actual session ID!
+      payment_session_id: paymentsSessionId,
     };
     
     const pendingOrder = await orderService.createOrder(pendingOrderData);
@@ -599,6 +612,8 @@ const handleOnlinePayment = async (orderData: any) => {
               status: 'confirmed',
               payment_status: 'success',
               payment_id: paymentData.payment_id,
+              payment_session_id: paymentData.payments_session_id,
+
               notes: (notes || '') + ' [Order created after payment verification]'
             });
             console.log('[Checkout] Pending order updated to confirmed');
@@ -632,11 +647,11 @@ const handleOnlinePayment = async (orderData: any) => {
               product_name: item.product_name,
               quantity: item.quantity,
               price: item.price,
-              total: item.price * item.quantity
+              total: item.price * item.quantity,
             })),
-            total_amount: total,
-            status: 'confirmed' as const,
-            notes: (notes || '') + ' [Order created after payment verification]'
+              payment_session_id: paymentData.payments_session_id,      
+              status: 'confirmed' as const,
+             notes: (notes || '') + ' [Order created after payment verification]'
           };
 
           const newOrder = await orderService.createOrder(orderData as any);
@@ -674,20 +689,31 @@ const handleOnlinePayment = async (orderData: any) => {
         console.log('[Checkout] Order success state set, scrolling to top');
         window.scrollTo({ top: 0, behavior: 'smooth' });
         
-        // Fire and forget: send order placed email via server API
-        if (finalOrderId) {
-          fetch('/api/emails/order-placed', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              to: String(customerDetails.email || ''),
-              orderId: finalOrderId,
-              customerName: customerDetails.name,
-              total: Number(total ?? 0),
-              items: cartItems.map(i => ({ name: i.product_name, qty: i.quantity, price: i.price })),
-            })
-          }).catch(() => {});
-        }
+        // Send customer confirmation email
+        fetch('/api/emails/order-placed', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            to: String(customerDetails.email || ''),
+            orderId: finalOrderId,
+            customerName: customerDetails.name,
+            total: Number(total ?? 0),
+            items: cartItems.map(i => ({ name: i.product_name, qty: i.quantity, price: i.price })),
+          })
+        }).catch(() => {});
+
+        // Send admin notification email
+        fetch('/api/emails/order-notify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            orderId: finalOrderId,
+            customerName: customerDetails.name,
+            customerEmail: customerDetails.email,
+            total: Number(total ?? 0),
+            items: cartItems.map(i => ({ name: i.product_name, qty: i.quantity, price: i.price })),
+          })
+        }).catch(() => {});
         
         return;
       } else {
@@ -711,7 +737,6 @@ const handleOnlinePayment = async (orderData: any) => {
           customer_phone: customerDetails.phone,
           shipping_address: shippingAddress,
           payment_method: 'Zoho Online Payment',
-          payment_id: paymentData.payment_id,
           payment_status: 'failed' as const,
           items: cartItems.map(item => ({
             product_id: item.product_id,
@@ -720,7 +745,6 @@ const handleOnlinePayment = async (orderData: any) => {
             price: item.price,
             total: item.price * item.quantity
           })),
-          total_amount: total,
           status: 'cancelled' as const,
           notes: `Payment failed: ${error instanceof Error ? error.message : 'Unknown error'}`
         };
@@ -991,7 +1015,7 @@ const handleOnlinePayment = async (orderData: any) => {
           total: item.price * item.quantity
         })),
         total_amount: total,
-        payment_id:"cod",
+        payment_id:null,
         status: 'processing' as const,
         payment_status: 'pending' as const,
         notes: notes || undefined
@@ -1667,7 +1691,7 @@ const handleOnlinePayment = async (orderData: any) => {
       </div>
 
       {/* Zoho Payment Widget - Only show if not in success state */}
-      {showPaymentWidget && !orderSuccess && (
+      {showPaymentWidget && !orderSuccess && paymentSessionId && (
         <>
           {console.log('[Checkout] Rendering ZohoPaymentWidget with props:', {
             amount: total,
@@ -1682,6 +1706,7 @@ const handleOnlinePayment = async (orderData: any) => {
             description={`Dhanya Naturals - Order ${paymentOrderId}`}
             customerDetails={customerDetails}
             orderId={paymentOrderId}
+            paymentsSessionId={paymentSessionId}
             onSuccess={handlePaymentSuccess}
             onError={handlePaymentError}
             onClose={() => setShowPaymentWidget(false)}
@@ -1697,6 +1722,7 @@ const handleOnlinePayment = async (orderData: any) => {
               quantity: item.quantity 
             }))} // ✅ SECURITY: Pass cart items for server-side verification
             shippingCharge={shipping} // ✅ SECURITY: Pass shipping for server-side verification
+            shippingAddress={shippingAddress} // ✅ SECURITY: Pass shipping address for validation
           />
         </>
       )}

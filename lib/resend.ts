@@ -42,6 +42,36 @@ export async function sendOrderPlacedEmail(params: {
   return { ok: true };
 }
 
+export async function sendOrderNotifyEmail(params: {
+  orderId?: number | string;
+  items?: Array<{ name: string; qty: number; price: number }>;
+  total?: number;
+  customerName?: string;
+}) {
+  const html = buildOrderEmailHtml({
+    heading: "New Order Arrived!",
+    intro: `${params.customerName || ""} has placed a new order.`,
+    orderId: params.orderId,
+    status: "Processing",
+    items: (params.items || []).map((i) => ({
+      name: i.name,
+      qty: i.qty,
+      price: Number(i.price) || 0,
+    })),
+    total: params.total !== undefined ? Number(params.total) : undefined,
+  });
+
+  const resend = getResend();
+  await resend.emails.send({
+    from: "Dhanya Naturals <orders@dhanyanaturals.in>",
+    to: ["spriyadarshini680@gmail.com","rajeshnambi2016@gmail.com","dhanyanaturals01@gmail.com"],
+    subject: `New Order Arrived!`,
+    html,
+  });
+
+  return { ok: true };
+}
+
 export async function sendOrderStatusEmail(params: {
   to: string;
   orderId?: number | string;
