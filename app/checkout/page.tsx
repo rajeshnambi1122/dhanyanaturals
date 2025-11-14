@@ -1534,7 +1534,7 @@ const handleOnlinePayment = async (orderData: any) => {
                             <div className="flex-1">
                               <div className="font-medium text-base mb-1">Online Payment</div>
                               <div className="text-sm text-gray-600 mb-2 sm:mb-0">
-                                Credit/Debit Card, UPI, Net Banking
+                                UPI & Debit & Credit Cards
                               </div>
                             </div>
                             
@@ -1558,7 +1558,6 @@ const handleOnlinePayment = async (orderData: any) => {
                               <div className="flex flex-wrap gap-1 justify-start sm:justify-end">
                                 <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full font-medium">UPI</span>
                                 <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full font-medium">Cards</span>
-                                <span className="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded-full font-medium">Net Banking</span>
                               </div>
                               
                               {/* Security badge */}

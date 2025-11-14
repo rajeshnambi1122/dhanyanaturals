@@ -45,6 +45,7 @@ export interface Order {
   billing_address?: any
   payment_method?: string
   payment_id?: string
+  payemt_session_id?: string
   payment_status?: "pending" | "success" | "failed" | "cancelled"
   tracking_number?: string
   notes?: string

@@ -160,7 +160,7 @@ export const productService = {
     inStockOnly?: boolean
     sortBy?: string
     featured?: boolean
-  }) {
+  }): Promise<Product[]> {
     console.log('[getProducts Client] Starting API call with filters:', filters);
     try {
       // Use the cached shared client to avoid race conditions with AuthContext
@@ -220,14 +220,14 @@ export const productService = {
         throw error;
       }
 
-      return data || []
+      return (data as unknown as Product[]) || []
     } catch (error) {
       console.error('[getProducts Client] Exception caught:', error);
       throw error;
     }
   },
 
-  async getProductById(id: number) {
+  async getProductById(id: number): Promise<Product | null> {
     // Create a fresh client per call to avoid stale module-level client issues
     const client = getSupabaseClient();
     const { data, error } = await client
@@ -242,10 +242,10 @@ export const productService = {
       throw error;
     }
 
-    return data
+    return data as unknown as Product
   },
 
-  async createProduct(product: Omit<Product, "id" | "created_at" | "updated_at">) {
+  async createProduct(product: Omit<Product, "id" | "created_at" | "updated_at">): Promise<Product> {
     const client = getSupabaseClient();
     const { data, error } = await client.from("products").insert([product]).select().single()
 
@@ -254,10 +254,10 @@ export const productService = {
       throw error
     }
 
-    return data
+    return data as unknown as Product
   },
 
-  async updateProduct(id: number, updates: Partial<Product>) {
+  async updateProduct(id: number, updates: Partial<Product>): Promise<Product> {
     const client = getSupabaseClient();
     const { data, error } = await client
       .from("products")
@@ -271,7 +271,7 @@ export const productService = {
       throw error
     }
 
-    return data
+    return data as unknown as Product
   },
 
   async deleteProduct(id: number) {
@@ -286,7 +286,7 @@ export const productService = {
     return true
   },
 
-  async getFeaturedProducts(limit = 4) {
+  async getFeaturedProducts(limit = 4): Promise<Product[]> {
     const client = getSupabaseClient();
     const { data, error } = await client
       .from("products")
@@ -302,10 +302,10 @@ export const productService = {
       return []
     }
 
-    return data || []
+    return (data as unknown as Product[]) || []
   },
 
-  async getRelatedProducts(productId: number, category: string, limit = 4) {
+  async getRelatedProducts(productId: number, category: string, limit = 4): Promise<Product[]> {
     const client = getSupabaseClient();
     const { data, error } = await client
       .from("products")
@@ -322,10 +322,10 @@ export const productService = {
       return []
     }
 
-    return data || []
+    return (data as unknown as Product[]) || []
   },
 
-  async searchProducts(searchTerm: string, limit = 20) {
+  async searchProducts(searchTerm: string, limit = 20): Promise<Product[]> {
     const client = getSupabaseClient();
     const { data, error } = await client
       .from("products")
@@ -341,10 +341,10 @@ export const productService = {
       return []
     }
 
-    return data || []
+    return (data as unknown as Product[]) || []
   },
 
-  async getProductsByIds(productIds: number[]) {
+  async getProductsByIds(productIds: number[]): Promise<Product[]> {
     if (productIds.length === 0) return []
     const client = getSupabaseClient();
     const { data, error } = await client
@@ -358,13 +358,13 @@ export const productService = {
       throw error;
     }
 
-    return data || []
+    return (data as unknown as Product[]) || []
   },
 }
 
 // Create client-aware orderService
 export const orderService = {
-  async getOrders() {
+  async getOrders(): Promise<Order[]> {
     const client = getSupabaseClient();
     const { data, error } = await client.from("orders").select("*").order("created_at", { ascending: false })
 
@@ -373,10 +373,10 @@ export const orderService = {
       throw error;
     }
 
-    return data || []
+    return (data as unknown as Order[]) || []
   },
 
-  async getOrdersByCustomer(email: string) {
+  async getOrdersByCustomer(email: string): Promise<Order[]> {
     const client = getSupabaseClient();
     const { data, error } = await client
       .from("orders")
@@ -389,15 +389,15 @@ export const orderService = {
       throw error;
     }
 
-    return data || []
+    return (data as unknown as Order[]) || []
   },
 
-  async validateOrderPrices(order: Omit<Order, "id" | "created_at" | "updated_at">) {
+  async validateOrderPrices(order: Omit<Order, "id" | "created_at" | "updated_at">): Promise<Omit<Order, "id" | "created_at" | "updated_at">> {
     console.warn('⚠️ Client-side price validation - should be done server-side!');
     return order;
   },
 
-  async createOrder(order: Omit<Order, "id" | "created_at" | "updated_at">) {
+  async createOrder(order: Omit<Order, "id" | "created_at" | "updated_at">): Promise<Order> {
     const client = getSupabaseClient();
     const { data, error } = await client.from("orders").insert([order]).select().single()
 
@@ -406,10 +406,10 @@ export const orderService = {
       throw error
     }
 
-    return data
+    return data as unknown as Order
   },
 
-  async getOrdersByStatus(status: "pending" | "processing" | "confirmed" | "shipped" | "delivered" | "cancelled") {
+  async getOrdersByStatus(status: "pending" | "processing" | "confirmed" | "shipped" | "delivered" | "cancelled"): Promise<Order[]> {
     const client = getSupabaseClient();
     const { data, error } = await client
       .from("orders")
@@ -422,7 +422,7 @@ export const orderService = {
       return []
     }
 
-    return data || []
+    return (data as unknown as Order[]) || []
   },
 
   async updateOrderStatus(id: number, updates: {
@@ -432,7 +432,7 @@ export const orderService = {
     payment_session_id?: string
     tracking_number?: string
     notes?: string
-  }) {
+  }): Promise<Order> {
     const client = getSupabaseClient();
     const updateData = {
       ...updates,
@@ -446,10 +446,10 @@ export const orderService = {
       throw error
     }
 
-    return data
+    return data as unknown as Order
   },
 
-  async getOrderById(id: number) {
+  async getOrderById(id: number): Promise<Order | null> {
     const client = getSupabaseClient();
     const { data, error } = await client
       .from("orders")
@@ -465,13 +465,13 @@ export const orderService = {
       throw error
     }
 
-    return data
+    return data as unknown as Order
   },
 }
 
 // Create client-aware userDataService
 export const userDataService = {
-  async getUserData(userId: string) {
+  async getUserData(userId: string): Promise<UserData | null> {
     const client = getSupabaseClient();
     const { data, error } = await client.from("user_data").select("*").eq("user_id", userId).single()
 
@@ -480,10 +480,10 @@ export const userDataService = {
       return null
     }
 
-    return data
+    return data as unknown as UserData | null
   },
 
-  async upsertUserData(userData: Omit<UserData, "id" | "created_at" | "updated_at">) {
+  async upsertUserData(userData: Omit<UserData, "id" | "created_at" | "updated_at">): Promise<UserData> {
     const client = getSupabaseClient();
     const { data, error } = await client
       .from("user_data")
@@ -496,10 +496,10 @@ export const userDataService = {
       throw new Error(`Failed to upsert user data: ${(error as any).message || 'Unknown error'}`)
     }
 
-    return data
+    return data as unknown as UserData
   },
 
-  async addToCart(userId: string, productId: number, quantity: number) {
+  async addToCart(userId: string, productId: number, quantity: number): Promise<UserData | null> {
     const existing = await this.getUserData(userId)
     const cartItems = (existing?.cart_items as CartItem[]) || []
 
@@ -524,7 +524,7 @@ export const userDataService = {
     })
   },
 
-  async removeFromCart(userId: string, productId: number) {
+  async removeFromCart(userId: string, productId: number): Promise<UserData | null> {
     const existing = await this.getUserData(userId)
     if (!existing) return null
 
@@ -539,7 +539,7 @@ export const userDataService = {
     })
   },
 
-  async updateCartQuantity(userId: string, productId: number, quantity: number) {
+  async updateCartQuantity(userId: string, productId: number, quantity: number): Promise<UserData | null> {
     if (quantity <= 0) {
       return this.removeFromCart(userId, productId)
     }
@@ -572,7 +572,7 @@ export const userDataService = {
     })
   },
 
-  async clearCart(userId: string) {
+  async clearCart(userId: string): Promise<UserData | null> {
     const existing = await this.getUserData(userId)
     if (!existing) return null
 
@@ -585,7 +585,7 @@ export const userDataService = {
     })
   },
 
-  async addToWishlist(userId: string, productId: number) {
+  async addToWishlist(userId: string, productId: number): Promise<UserData | null> {
     const existing = await this.getUserData(userId)
     const wishlistItems = (existing?.wishlist_items as WishlistItem[]) || []
 
@@ -606,7 +606,7 @@ export const userDataService = {
     })
   },
 
-  async removeFromWishlist(userId: string, productId: number) {
+  async removeFromWishlist(userId: string, productId: number): Promise<UserData | null> {
     const existing = await this.getUserData(userId)
     if (!existing) return null
 

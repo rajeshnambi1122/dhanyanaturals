@@ -9,7 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { ShoppingBag, Star, Search, Grid, List, Filter, SlidersHorizontal, Heart, Sparkles } from "lucide-react"
-import { productService, type Product } from "@/lib/supabase"
+import { productService} from "@/lib/supabase"
+import { type Product } from "@/lib/types"
 
 
 const categories = [
@@ -402,7 +403,7 @@ export default function ProductsPage() {
                             </div>
                           )}
                           {product.original_price && product.original_price > product.price && (
-                            <div className="glass-badge bg-gradient-to-r from-red-500 to-pink-500 absolute top-3 left-3 animate-pulse">
+                            <div className="glass-badge p-0.5 bg-gradient-to-r from-red-500 to-pink-500 absolute top-3 left-3 animate-pulse">
                               🔥 Sale
                             </div>
                           )}

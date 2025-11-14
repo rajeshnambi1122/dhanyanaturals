@@ -557,7 +557,7 @@ export default function CartPage() {
                       <span className="block sm:inline"> for free shipping!</span>
                     </div>
                   )}
-
+                  <div className="space-y-1"></div>
                {/*   <div className="space-y-2">
                     <Input
                       placeholder="Promo code"
@@ -569,7 +569,6 @@ export default function CartPage() {
                       Apply Code
                     </Button>
                   </div> */}
-
                   <Link href="/checkout">
                     <Button className="w-full glass-button text-sm sm:text-base py-2 sm:py-3" size="lg">
                       Proceed to Checkout
