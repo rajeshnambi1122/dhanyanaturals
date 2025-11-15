@@ -142,6 +142,131 @@ Dhanya Naturals is a professionally developed, comprehensive e-commerce platform
 - 🔍 Advanced product search and filtering
 
 ---
+
+## 🚀 Getting Started
+
+### Prerequisites
+
+- Node.js 18+ 
+- npm or yarn
+- Supabase account
+- Zoho Payments account (for production)
+- Resend account (for emails)
+
+### Installation
+
+1. **Clone the repository**
+
+```bash
+git clone https://github.com/yourusername/dhanyanaturals.git
+cd dhanyanaturals
+```
+
+2. **Install dependencies**
+
+```bash
+npm install
+```
+
+3. **Set up environment variables**
+
+Create a `.env.local` file in the root directory:
+
+```bash
+cp .env.example .env.local
+```
+
+See [Environment Variables](#-environment-variables) section below for details.
+
+4. **Run database migrations**
+
+```bash
+# If using Supabase CLI
+supabase db push
+
+# Or manually run migrations
+psql -U your_user -d your_database -f supabase/migrations/*.sql
+```
+
+5. **Start the development server**
+
+```bash
+npm run dev
+```
+
+6. **Open your browser**
+
+Navigate to [http://localhost:3000](http://localhost:3000)
+
+---
+
+## 🔐 Environment Variables
+
+Create a `.env.local` file with the following variables:
+
+### **Core Configuration**
+
+```bash
+# App URL (required for webhooks)
+NEXT_PUBLIC_APP_URL=http://localhost:3000  # or your production domain
+```
+
+### **Supabase Configuration**
+
+```bash
+# Client-side (public)
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+
+# Server-side only (keep secret!)
+SUPABASE_URL=your_supabase_url  # For API routes and webhooks
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key  # For admin operations
+```
+
+### **Zoho Payments Configuration**
+
+```bash
+NEXT_PUBLIC_ZOHO_ACCOUNT_ID=your_zoho_account_id
+NEXT_PUBLIC_ZOHO_API_KEY=your_zoho_api_key
+
+# OAuth Credentials (for Zoho API access)
+ZOHO_CLIENT_ID=your_client_id
+ZOHO_CLIENT_SECRET=your_client_secret
+ZOHO_REDIRECT_URI=http://localhost:3000/api/zoho/callback
+ZOHO_REFRESH_TOKEN=your_refresh_token  # Generated after first OAuth flow
+
+# Webhook Security
+ZOHO_WEBHOOK_SECRET=your_webhook_secret  # For signature verification
+```
+
+### **Email Configuration (Resend)**
+
+```bash
+RESEND_API_KEY=your_resend_api_key
+```
+
+### **Important Setup Notes**
+
+1. **Webhook Configuration**: 
+   - Set up webhook endpoint in Zoho dashboard: `/api/webhooks/zoho-payment`
+   - See [docs/WEBHOOK_SETUP.md](docs/WEBHOOK_SETUP.md) for detailed instructions
+   - Critical for handling payment race conditions
+
+2. **Supabase Service Role Key**:
+   - Required for server-side webhook operations
+   - Keep this secret and never expose to client
+
+3. **Zoho OAuth Setup**:
+   - Follow the OAuth flow to get refresh token
+   - Access `/api/zoho/auth` to initiate OAuth
+   - Token is used for payment verification and webhook processing
+
+4. **Production Deployment**:
+   - Update `NEXT_PUBLIC_APP_URL` to your production domain
+   - Configure Zoho webhook URL in their dashboard
+   - Ensure all secrets are properly secured
+
+---
 ## 📁 Project Structure
 
 ```
@@ -180,6 +305,16 @@ dhanyanaturals/
 - `POST /api/emails/order-placed` - Send order confirmation email
 - `POST /api/emails/order-status` - Send order status update email
 
+### **Payment APIs**
+- `POST /api/payments/verify` - Verify payment status with Zoho
+- `POST /api/webhooks/zoho-payment` - Handle Zoho payment webhooks (server-to-server)
+- `GET /api/webhooks/zoho-payment` - Webhook health check
+
+### **Zoho OAuth APIs**
+- `GET /api/zoho/auth` - Initiate Zoho OAuth flow
+- `GET /api/zoho/callback` - Handle OAuth callback
+- `GET /api/zoho/token-status` - Check token status (admin only)
+
 ### **Testing Email API**
 ```bash
 curl -X POST http://localhost:3000/api/emails/order-placed \
@@ -208,8 +343,10 @@ curl -X POST http://localhost:3000/api/emails/order-placed \
 ### **Payment Processing**
 - Zoho Payment Gateway integration
 - Real-time payment status updates
-- Automatic order creation on payment success
-- Payment recovery for failed transactions
+- **Server-side webhook notifications** - Eliminates race conditions
+- Automatic order confirmation even if browser is closed
+- Payment recovery modal for failed transactions
+- Idempotent webhook processing with audit trail
 
 ### **State Management**
 - React Context API for global state
@@ -273,8 +410,6 @@ For ongoing maintenance, feature requests, or technical issues, please contact t
 <div align="center">
 
 **Professional E-Commerce Solution for Dhanya Naturals**
-
 *Developed with modern technologies and best practices*
-
 </div>
 

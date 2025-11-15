@@ -250,6 +250,18 @@ export async function createPaymentSession(
       description,
     };
 
+    // Add webhook URL for server-side payment notification
+    const webhookUrl = process.env.NEXT_PUBLIC_APP_URL 
+      ? `${process.env.NEXT_PUBLIC_APP_URL}/api/webhooks/zoho-payment`
+      : undefined;
+    
+    if (webhookUrl) {
+      payload.callback_url = webhookUrl;
+      console.log('🔗 Webhook URL configured:', webhookUrl);
+    } else {
+      console.warn('⚠️ NEXT_PUBLIC_APP_URL not configured - webhook notifications disabled');
+    }
+
     // Add optional fields
     if (referenceNumber) {
       payload.reference_number = referenceNumber;
