@@ -13,9 +13,9 @@ import { SpeedInsights } from "@vercel/speed-insights/next"
 const poppins = Poppins({ subsets: ["latin"], weight: ["400", "600", "700"] });
 
 export const metadata: Metadata = {
-  title: "Dhanya Naturals - Premium Ayurvedic Products",
-  description: "Discover our range of premium Ayurvedic products. Natural, organic, and authentic wellness solutions for your everyday health needs.",
-  keywords: ["ayurvedic products", "natural products", "organic wellness", "dhanya naturals", "health and wellness", "herbal products"],
+  title: "Dhanya Naturals - Premium Organic Products",
+  description: "Discover our range of premium organic products. Natural, organic, and authentic wellness solutions for your everyday health needs.",
+  keywords: ["organic products", "natural products", "organic wellness", "dhanya naturals", "health and wellness", "herbal products"],
   icons: {
     icon: "/logo.png",
     apple: "/logo.png",

@@ -327,7 +327,38 @@ async function sendOrderConfirmationEmail(order: any) {
     console.error('❌ Error sending order confirmation email:', error instanceof Error ? error.message : error)
   }
 }
+async function sendOrderNotifyEmail(order: any) {
+  try {
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL
+    if (!appUrl) {
+      console.warn('⚠️ NEXT_PUBLIC_APP_URL not set - skipping email notification')
+      return
+    }
+    const emailUrl = `${appUrl}/api/emails/order-notify`
 
+    const emailResponse = await fetch(emailUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ 
+        orderId: order.id,
+        customerName: order.customer_name,
+        customerEmail: order.customer_email,
+        total: order.total_amount,
+        items: order.items
+      })
+    })
+    if (!emailResponse.ok) {
+      const errorText = await emailResponse.text()
+      console.error('❌ Failed to send order notify email:', emailResponse.status, errorText)
+    } else {
+      console.log('✅ Order notify email sent successfully')
+    }
+  }catch(error){
+    console.error('❌ Error sending order notify email:', error)
+  }
+}
 /**
  * Main webhook handler
  */
@@ -516,6 +547,9 @@ export async function POST(request: NextRequest) {
     if (isSuccess) {
       // Don't await - send email asynchronously
       sendOrderConfirmationEmail(order).catch(err => 
+        console.error('Email sending failed:', err)
+      )
+      sendOrderNotifyEmail(order).catch(err => 
         console.error('Email sending failed:', err)
       )
     }

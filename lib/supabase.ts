@@ -1372,7 +1372,7 @@ export const clientAuth = {
         // State-based shipping
         const state = shippingAddress.state.toLowerCase().trim();
         if (state === 'tamil nadu' || state === 'tn') {
-          calculatedShipping = 0;  // ✅ Fixed: ₹50 for TN
+          calculatedShipping = 50;  // ✅ Fixed: ₹50 for TN
         } else {
           calculatedShipping = 80;  // ₹80 for rest of India
         }

@@ -386,7 +386,7 @@ function CheckoutPageContent() {
     
     // State-based shipping
     if (state.toLowerCase() === 'tamil nadu' || state.toLowerCase() === 'tn') {
-      return 0; // ₹50 for Tamil Nadu
+      return 50; // ₹50 for Tamil Nadu
     } else {
       return 80; // ₹80 for rest of India
     }

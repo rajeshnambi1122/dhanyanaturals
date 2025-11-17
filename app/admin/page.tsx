@@ -864,7 +864,7 @@ export default function AdminDashboard() {
                 ) : (
                   <div className="grid gap-4 sm:gap-6 grid-cols-1 md:grid-cols-2 xl:grid-cols-3">
                     {products.map((product) => (
-                      <div key={product.id} className="glass-card p-4 sm:p-6 hover-lift border border-white/20">
+                      <div key={product.id} className="glass-card p-4 sm:p-6 border border-white/20 select-none pointer-events-auto" style={{ cursor: 'default' }}>
                         {/* Product Header */}
                         <div className="flex flex-col sm:flex-row sm:items-start gap-4 mb-4">
                           {/* Product Images */}
@@ -995,12 +995,15 @@ export default function AdminDashboard() {
 
                         {/* Product Actions */}
                         <div className="border-t border-gray-200 pt-4">
-                          <div className="flex flex-wrap gap-2">
+                          <div className="flex flex-wrap gap-2 pointer-events-auto">
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => handleEditProduct(product)}
-                              className="glass-input bg-transparent flex-1 min-w-0"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleEditProduct(product);
+                              }}
+                              className="glass-input bg-transparent flex-1 min-w-0 cursor-pointer"
                             >
                               <Edit className="h-3 w-3 mr-1" />
                               Edit
@@ -1008,8 +1011,11 @@ export default function AdminDashboard() {
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => handleDeleteProduct(product.id)}
-                              className="glass-input bg-transparent text-red-600 hover:text-red-700 hover:bg-red-50 flex-1 min-w-0"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteProduct(product.id);
+                              }}
+                              className="glass-input bg-transparent text-red-600 hover:text-red-700 hover:bg-red-50 flex-1 min-w-0 cursor-pointer"
                             >
                               <Trash2 className="h-3 w-3 mr-1" />
                               Delete
