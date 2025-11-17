@@ -364,9 +364,40 @@ export const productService = {
 
 // Create client-aware orderService
 export const orderService = {
+  // ⚠️ SECURITY: This function should ONLY be used in admin context
+  // Regular users should use getOrdersByCustomer() instead
   async getOrders(): Promise<Order[]> {
     const client = getSupabaseClient();
-    const { data, error } = await client.from("orders").select("*").order("created_at", { ascending: false })
+    
+    // Check if user is admin
+    const { data: { user } } = await client.auth.getUser();
+    if (!user) {
+      console.error('[getOrders] No authenticated user');
+      return [];
+    }
+
+    // Check admin status
+    const { data: userData } = await client
+      .from('user_data')
+      .select('role')
+      .eq('user_id', user.id)
+      .single();
+
+    if (userData?.role !== 'admin') {
+      console.warn('[getOrders] Non-admin user attempted to fetch all orders');
+      // For non-admin users, return only their orders
+      const { data: { user: currentUser } } = await client.auth.getUser();
+      if (currentUser?.email) {
+        return this.getOrdersByCustomer(currentUser.email);
+      }
+      return [];
+    }
+
+    // Admin user - fetch all orders
+    const { data, error } = await client
+      .from("orders")
+      .select("*")
+      .order("created_at", { ascending: false });
 
     if (error) {
       console.error("Error fetching orders:", error)
@@ -375,6 +406,7 @@ export const orderService = {
 
     return (data as unknown as Order[]) || []
   },
+
 
   async getOrdersByCustomer(email: string): Promise<Order[]> {
     const client = getSupabaseClient();
@@ -409,13 +441,39 @@ export const orderService = {
     return data as unknown as Order
   },
 
+  // ⚠️ SECURITY: This function should ONLY be used in admin context
   async getOrdersByStatus(status: "pending" | "processing" | "confirmed" | "shipped" | "delivered" | "cancelled"): Promise<Order[]> {
     const client = getSupabaseClient();
-    const { data, error } = await client
+    
+    // Check if user is admin
+    const { data: { user } } = await client.auth.getUser();
+    if (!user) {
+      console.error('[getOrdersByStatus] No authenticated user');
+      return [];
+    }
+
+    // Check admin status
+    const { data: userData } = await client
+      .from('user_data')
+      .select('role')
+      .eq('user_id', user.id)
+      .single();
+
+    let query = client
       .from("orders")
       .select("*")
-      .eq("status", status)
-      .order("created_at", { ascending: false })
+      .eq("status", status);
+
+    // If not admin, filter by customer email
+    if (userData?.role !== 'admin') {
+      const { data: { user: currentUser } } = await client.auth.getUser();
+      if (!currentUser?.email) {
+        return [];
+      }
+      query = query.eq("customer_email", currentUser.email);
+    }
+
+    const { data, error } = await query.order("created_at", { ascending: false });
 
     if (error) {
       console.error("Error fetching orders by status:", error)
@@ -466,6 +524,45 @@ export const orderService = {
     }
 
     return data as unknown as Order
+  },
+
+  /**
+   * Get the last/highest order ID
+   * Useful for generating next order reference numbers
+   * Returns just the ID number, not full order details (secure)
+   */
+  async getLastOrderId(): Promise<number> {
+    const client = getSupabaseClient();
+    
+    try {
+      // Only select the ID column for security
+      // Orders with higher IDs were created more recently
+      const { data, error } = await client
+        .from("orders")
+        .select("id")
+        .order("id", { ascending: false })
+        .limit(1)
+        .single();
+
+      if (error) {
+        // If no orders exist, return 1000 as starting number
+        if ((error as any).code === 'PGRST116') {
+          console.log('[getLastOrderId] No orders found, returning starting ID 1000');
+          return 1000;
+        }
+        console.error('[getLastOrderId] Error fetching last order:', error);
+        // Return default starting number on error
+        return 1000;
+      }
+
+      const lastId = (data?.id as number) || 1000;
+      console.log('[getLastOrderId] Last order ID:', lastId);
+      return lastId;
+    } catch (error) {
+      console.error('[getLastOrderId] Exception:', error);
+      // Return default starting number on exception
+      return 1000;
+    }
   },
 }
 
@@ -1275,7 +1372,7 @@ export const clientAuth = {
         // State-based shipping
         const state = shippingAddress.state.toLowerCase().trim();
         if (state === 'tamil nadu' || state === 'tn') {
-          calculatedShipping = 50;  // ✅ Fixed: ₹50 for TN
+          calculatedShipping = 0;  // ✅ Fixed: ₹50 for TN
         } else {
           calculatedShipping = 80;  // ₹80 for rest of India
         }

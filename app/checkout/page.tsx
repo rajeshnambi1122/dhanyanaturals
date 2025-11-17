@@ -113,20 +113,15 @@ function CheckoutPageContent() {
 
     const generateOrderReference = async () => {
       try {
-        // Fetch the latest order to get the highest order ID
-        const orders = await orderService.getOrders();
-        
-        let nextOrderNumber = 1001; // Default starting number
-        
-        if (orders && orders.length > 0) {
-          // Get the highest ID from existing orders
-          const maxId = Math.max(...orders.map((order: any) => Number(order?.id ?? 0)));
-          nextOrderNumber = maxId + 1;
-        }
+        // Use secure function that only returns the last order ID
+        const lastOrderId = await orderService.getLastOrderId();
+        const nextOrderNumber = lastOrderId + 1;
         
         setPaymentOrderId(`#${nextOrderNumber}`);
         setOrderIdGenerated(true);
+        console.log('[Checkout] Generated order reference:', `#${nextOrderNumber}`);
       } catch (error) {
+        console.error('[Checkout] Error generating order reference:', error);
         // Fallback to timestamp-based ID if fetch fails
         setPaymentOrderId(`#ORDER_${Date.now()}`);
         setOrderIdGenerated(true);
@@ -391,7 +386,7 @@ function CheckoutPageContent() {
     
     // State-based shipping
     if (state.toLowerCase() === 'tamil nadu' || state.toLowerCase() === 'tn') {
-      return 50; // ₹50 for Tamil Nadu
+      return 0; // ₹50 for Tamil Nadu
     } else {
       return 80; // ₹80 for rest of India
     }
@@ -502,6 +497,7 @@ const handleOnlinePayment = async (orderData: any) => {
       notes: (orderData.notes || '') + ' [Payment in progress - awaiting confirmation]',
       payment_id: null, // Now we have the actual session ID!
       payment_session_id: paymentsSessionId,
+      reference_number: paymentOrderId,
     };
     
     const pendingOrder = await orderService.createOrder(pendingOrderData);

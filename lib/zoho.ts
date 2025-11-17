@@ -37,31 +37,48 @@ export async function getAccessToken(forceRefresh: boolean = false): Promise<str
   try {
     const cookieStore = await cookies();
     
-    // If not forcing refresh, try to get from cookies first
-    if (!forceRefresh) {
-      const accessToken = cookieStore.get('zoho_access_token');
-      if (accessToken) {
-        console.log('Found cookie access token, attempting to use it');
-        return accessToken.value;
+    // If forcing refresh, skip cookie check and go straight to refresh
+    if (forceRefresh) {
+      console.log('Force refresh requested, skipping cookie check');
+      
+      if (process.env.ZOHO_REFRESH_TOKEN) {
+        console.log('Attempting to refresh token from environment variable');
+        const newTokens = await refreshAccessToken(process.env.ZOHO_REFRESH_TOKEN);
+        if (newTokens) {
+          console.log('Successfully refreshed token');
+          return newTokens.access_token;
+        }
       }
+      
+      // If force refresh fails, return null
+      console.log('Force refresh failed');
+      return null;
     }
     
-    // Try to refresh token using environment variable only (for security)
-    // Refresh tokens should never be stored in client-side cookies
+    // Try to get from cookies first (for subsequent requests)
+    const accessToken = cookieStore.get('zoho_access_token');
+    if (accessToken) {
+      console.log('Found cookie access token');
+      return accessToken.value;
+    }
+    
+    // No cookie token found, try to refresh using environment variable
     if (process.env.ZOHO_REFRESH_TOKEN) {
-      console.log('Attempting to refresh token from environment variable');
+      console.log('No cookie token found, attempting to refresh token from environment variable');
       const newTokens = await refreshAccessToken(process.env.ZOHO_REFRESH_TOKEN);
       if (newTokens) {
-        console.log('Successfully refreshed token');
+        console.log('Successfully refreshed token and stored in cookies');
         return newTokens.access_token;
+      } else {
+        console.log('Token refresh failed');
       }
     } else {
       console.log('No refresh token available in environment variables');
     }
     
-    // Fallback to environment variable access token (for production) - only if not forcing refresh
-    if (!forceRefresh && process.env.ZOHO_ACCESS_TOKEN) {
-      console.log('Using environment variable access token (may be expired)');
+    // Fallback to environment variable access token (for production/initial setup)
+    if (process.env.ZOHO_ACCESS_TOKEN) {
+      console.log('Using environment variable access token as fallback');
       return process.env.ZOHO_ACCESS_TOKEN;
     }
     
@@ -182,7 +199,8 @@ export async function makeZohoApiCall(url: string, options: RequestInit, accessT
     }
   }
 
-  // First attempt
+  // First attempt with provided/existing token
+  console.log('Making Zoho API call to:', url);
   let response = await fetch(url, {
     ...options,
     headers: {
@@ -191,21 +209,30 @@ export async function makeZohoApiCall(url: string, options: RequestInit, accessT
     },
   });
 
-  // If 401, try to refresh token and retry once
+  // If 401 (Unauthorized), the token is expired - refresh and retry
   if (response.status === 401) {
-    console.log('Received 401, attempting to refresh token and retry...');
+    console.log('❌ Received 401 Unauthorized - token expired, attempting to refresh...');
     
     const newAccessToken = await getAccessToken(true); // Force refresh
     if (newAccessToken) {
-      console.log('Got new access token, retrying API call...');
+      console.log('✅ Successfully refreshed token, retrying API call...');
       
+      // Retry the API call with the new token
       response = await fetch(url, {
         ...options,
         headers: {
           ...options.headers,
-          'Authorization': `Bearer ${newAccessToken || ''}`,
+          'Authorization': `Bearer ${newAccessToken}`,
         },
       });
+      
+      if (response.ok) {
+        console.log('✅ API call succeeded after token refresh');
+      } else {
+        console.log('❌ API call failed even after token refresh:', response.status);
+      }
+    } else {
+      console.error('❌ Failed to refresh token - cannot retry API call');
     }
   }
 
@@ -230,39 +257,40 @@ export async function createPaymentSession(
   try {
     // Check if Zoho Payments is properly configured
     if (!ZOHO_ACCOUNT_ID) {
-      return { error: 'Payment gateway not configured' };
+      console.error('❌ ZOHO_ACCOUNT_ID not configured');
+      return { error: 'Payment gateway not configured - missing ZOHO_ACCOUNT_ID' };
     }
 
-    // Try to get access token
+    // Try to get access token (will auto-refresh if expired)
+    console.log('📝 Getting access token for payment session...');
     const accessToken = await getAccessToken();
     
     if (!accessToken) {
+      console.error('❌ No access token available after refresh attempt');
+      console.error('📋 Please set ZOHO_REFRESH_TOKEN in environment variables');
       return { 
-        error: 'Authentication required',
+        error: 'Authentication required - no valid access token or refresh token found',
         authUrl: getZohoAuthUrl()
       };
     }
+    
+    console.log('✅ Access token obtained successfully');
 
     // Prepare payload for Zoho API
+    // Zoho expects amount as a NUMBER (not string)
+    // Testing currency format - Zoho might want uppercase INR
+    const numericAmount = typeof amount === 'string' ? parseFloat(amount) : amount;
+    
     const payload: any = {
-      amount: typeof amount === 'string' ? parseFloat(amount) : amount,
-      currency: currency,
-      description,
+      amount: numericAmount,
+      currency: currency.toUpperCase(), // Try uppercase "INR"
     };
 
-    // Add webhook URL for server-side payment notification
-    const webhookUrl = process.env.NEXT_PUBLIC_APP_URL 
-      ? `${process.env.NEXT_PUBLIC_APP_URL}/api/webhooks/zoho-payment`
-      : undefined;
-    
-    if (webhookUrl) {
-      payload.callback_url = webhookUrl;
-      console.log('🔗 Webhook URL configured:', webhookUrl);
-    } else {
-      console.warn('⚠️ NEXT_PUBLIC_APP_URL not configured - webhook notifications disabled');
+    // Add optional fields if provided
+    if (description) {
+      payload.description = description;
     }
-
-    // Add optional fields
+    
     if (referenceNumber) {
       payload.reference_number = referenceNumber;
     }
@@ -271,9 +299,19 @@ export async function createPaymentSession(
       payload.invoice_number = invoiceNumber;
     }
 
+    // Note: callback_url is NOT part of the payment session API
+    // Webhooks are configured in Zoho Payments Dashboard → Settings → Webhooks
+    // Not in the API request payload
+    
+    console.log('📦 Payment session payload:', JSON.stringify(payload, null, 2));
+    console.log('ℹ️  Note: Webhook URL should be configured in Zoho Dashboard, not in API request');
+
     // Make API call with retry logic
+    const apiUrl = `${ZOHO_API_BASE}/paymentsessions?account_id=${encodeURIComponent(ZOHO_ACCOUNT_ID!)}`;
+    console.log('🔗 Making API call to:', apiUrl);
+    
     const response = await makeZohoApiCall(
-      `${ZOHO_API_BASE}/paymentsessions?account_id=${encodeURIComponent(ZOHO_ACCOUNT_ID!)}`,
+      apiUrl,
       {
         method: 'POST',
         headers: {
@@ -285,21 +323,42 @@ export async function createPaymentSession(
     );
   
     const text = await response.text();
+    console.log('📥 Zoho API response status:', response.status);
+    console.log('📥 Zoho API response body:', text);
     
     if (!response.ok) {
-      console.error('Zoho session error:', response.status, text);
-      return { error: `Failed to create payment session: ${text}` };
+      console.error('❌ Zoho session creation failed:', response.status);
+      console.error('❌ Response body:', text);
+      
+      // Try to parse error details
+      try {
+        const errorData = JSON.parse(text);
+        const errorMessage = errorData.message || errorData.error || text;
+        return { error: `Failed to create payment session: ${errorMessage}` };
+      } catch {
+        return { error: `Failed to create payment session: ${text}` };
+      }
     }
 
-    const data = JSON.parse(text);
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (parseError) {
+      console.error('❌ Failed to parse Zoho response:', text);
+      return { error: 'Invalid response format from payment gateway' };
+    }
+    
+    console.log('📦 Parsed Zoho response:', JSON.stringify(data, null, 2));
     
     // Payment sessions API returns payments_session format
     if (data.code === 0 && data.payments_session) {
       const sessionId = data.payments_session.payments_session_id;
+      console.log('✅ Payment session created successfully:', sessionId);
       return { payments_session_id: sessionId };
     } else {
-      console.error('Invalid session response:', data);
-      return { error: 'Invalid session response' };
+      console.error('❌ Invalid session response format:', data);
+      const errorMsg = data.message || data.error || 'Invalid session response';
+      return { error: errorMsg };
     }
   } catch (error) {
     console.error('Session creation error:', error);

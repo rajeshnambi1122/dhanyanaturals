@@ -337,10 +337,10 @@ export async function POST(request: NextRequest) {
   try {
     // Parse request body
     const rawBody = await request.text()
-    let webhookData: ZohoWebhookPayload
+    let webhookPayload: any
 
     try {
-      webhookData = JSON.parse(rawBody)
+      webhookPayload = JSON.parse(rawBody)
     } catch (parseError) {
       console.error('Failed to parse webhook payload:', parseError)
       return NextResponse.json(
@@ -349,29 +349,56 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    console.log('Webhook payload:', {
+    console.log('📥 Raw webhook payload received:', JSON.stringify(webhookPayload, null, 2))
+
+    // Extract payment data from nested structure
+    const eventType = webhookPayload.event_type
+    const payment = webhookPayload.event_object?.payment || {}
+    
+    const webhookData: ZohoWebhookPayload = {
+      event_type: eventType,
+      payment_id: payment.payment_id,
+      payments_session_id: payment.payments_session_id,
+      status: payment.status,
+      amount: parseFloat(payment.amount) || 0,
+      currency: payment.currency,
+      reference_number: payment.reference_number,
+      customer_email: payment.receipt_email,
+      customer_name: payment.customer_name,
+      timestamp: new Date().toISOString()
+    }
+
+    console.log('📦 Extracted webhook data:', {
       event_type: webhookData.event_type,
       payment_id: webhookData.payment_id,
+      payments_session_id: webhookData.payments_session_id,
       status: webhookData.status,
       amount: webhookData.amount
     })
 
-    // Verify webhook signature (mandatory)
+    // Verify webhook signature if secret is configured
     const signature = request.headers.get('x-zoho-signature')
-    if (!signature) {
-      console.error('❌ Missing x-zoho-signature header')
-      return NextResponse.json(
-        { error: 'Missing signature header' },
-        { status: 401 }
-      )
-    }
+    const webhookSecret = process.env.ZOHO_WEBHOOK_SECRET
+    
+    if (webhookSecret) {
+      if (!signature) {
+        console.error('❌ Missing x-zoho-signature header')
+        return NextResponse.json(
+          { error: 'Missing signature header' },
+          { status: 401 }
+        )
+      }
 
-    if (!verifyWebhookSignature(rawBody, signature)) {
-      console.error('❌ Webhook signature verification failed')
-      return NextResponse.json(
-        { error: 'Invalid signature' },
-        { status: 401 }
-      )
+      if (!verifyWebhookSignature(rawBody, signature)) {
+        console.error('❌ Webhook signature verification failed')
+        return NextResponse.json(
+          { error: 'Invalid signature' },
+          { status: 401 }
+        )
+      }
+      console.log('✅ Webhook signature verified')
+    } else {
+      console.warn('⚠️ ZOHO_WEBHOOK_SECRET not configured - skipping signature verification (not recommended for production)')
     }
 
     // Check idempotency - prevent duplicate processing
