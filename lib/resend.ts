@@ -15,6 +15,7 @@ export async function sendOrderPlacedEmail(params: {
   to: string;
   orderId?: number | string;
   items?: Array<{ name: string; qty: number; price: number }>;
+  shippingCharge?: number;
   total?: number;
   customerName?: string;
 }) {
@@ -22,12 +23,13 @@ export async function sendOrderPlacedEmail(params: {
     heading: "Order Placed Successfully",
     intro: `Hi ${params.customerName || "there"}, your order has been received and is now being processed.`,
     orderId: params.orderId,
-    status: "Processing",
+    status: "Confirmed",
     items: (params.items || []).map((i) => ({
       name: i.name,
       qty: i.qty,
       price: Number(i.price) || 0,
     })),
+    shippingCharge: params.shippingCharge !== undefined ? Number(params.shippingCharge) : undefined,
     total: params.total !== undefined ? Number(params.total) : undefined,
   });
 
@@ -45,6 +47,7 @@ export async function sendOrderPlacedEmail(params: {
 export async function sendOrderNotifyEmail(params: {
   orderId?: number | string;
   items?: Array<{ name: string; qty: number; price: number }>;
+  shippingCharge?: number;
   total?: number;
   customerName?: string;
 }) {
@@ -52,12 +55,13 @@ export async function sendOrderNotifyEmail(params: {
     heading: "New Order Arrived!",
     intro: `${params.customerName || ""} has placed a new order.`,
     orderId: params.orderId,
-    status: "Processing",
+    status: "Confirmed",
     items: (params.items || []).map((i) => ({
       name: i.name,
       qty: i.qty,
       price: Number(i.price) || 0,
     })),
+    shippingCharge: params.shippingCharge !== undefined ? Number(params.shippingCharge) : undefined,
     total: params.total !== undefined ? Number(params.total) : undefined,
   });
 
@@ -77,6 +81,7 @@ export async function sendOrderStatusEmail(params: {
   orderId?: number | string;
   newStatus: string;
   items?: Array<{ name: string; qty: number; price: number }>;
+  shippingCharge?: number;
   total?: number;
   customerName?: string;
   trackingNumber?: string;
@@ -95,6 +100,7 @@ export async function sendOrderStatusEmail(params: {
       qty: i.qty,
       price: Number(i.price) || 0,
     })),
+    shippingCharge: params.shippingCharge !== undefined ? Number(params.shippingCharge) : undefined,
     total: params.total !== undefined ? Number(params.total) : undefined,
   });
 

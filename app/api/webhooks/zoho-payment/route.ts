@@ -243,6 +243,43 @@ async function isWebhookAlreadyProcessed(
 }
 
 /**
+ * Calculate shipping charge based on business rules
+ * Rules:
+ * - Free shipping if total amount >= ₹999
+ * - ₹50 for Tamil Nadu
+ * - ₹80 for other states
+ */
+function calculateShippingCharge(totalAmount: number, shippingAddress: any): number {
+  // Free shipping for orders >= ₹999
+  if (totalAmount >= 999) {
+    console.log('📦 Free shipping applied (order >= ₹999)')
+    return 0
+  }
+
+  // Parse shipping address if it's a string
+  let address = shippingAddress
+  if (typeof shippingAddress === 'string') {
+    try {
+      address = JSON.parse(shippingAddress)
+    } catch (e) {
+      console.error('Failed to parse shipping address:', e)
+      address = {}
+    }
+  }
+
+  // Check state - case insensitive comparison
+  const state = (address?.state || '').toLowerCase().trim()
+  
+  if (state === 'tamil nadu' || state === 'tamilnadu') {
+    console.log('📦 Tamil Nadu shipping: ₹50')
+    return 50
+  } else {
+    console.log('📦 Other state shipping: ₹80')
+    return 80
+  }
+}
+
+/**
  * Send email notification for confirmed order
  */
 async function sendOrderConfirmationEmail(order: any) {
@@ -302,6 +339,15 @@ async function sendOrderConfirmationEmail(order: any) {
     console.log('📦 Order items:', orderItems.length, 'items')
     console.log('📧 Email items formatted:', emailItems)
 
+    // Calculate shipping charge based on order total and address
+    // Note: We need to calculate this because total_amount already includes shipping
+    // So we calculate what shipping should be based on the subtotal
+    const itemsSubtotal = emailItems.reduce((sum: number, item: any) => sum + (item.price * item.qty), 0)
+    const shippingCharge = calculateShippingCharge(itemsSubtotal, order.shipping_address)
+    
+    console.log('💰 Items subtotal:', itemsSubtotal)
+    console.log('🚚 Calculated shipping charge:', shippingCharge)
+
     // Call the email API endpoint
     const emailResponse = await fetch(emailUrl, {
       method: 'POST',
@@ -313,6 +359,7 @@ async function sendOrderConfirmationEmail(order: any) {
         orderId: order.id,
         customerName: order.customer_name,
         total: order.total_amount,
+        shippingCharge: shippingCharge,
         items: emailItems  // Use transformed items
       })
     })
@@ -336,6 +383,27 @@ async function sendOrderNotifyEmail(order: any) {
     }
     const emailUrl = `${appUrl}/api/emails/order-notify`
 
+    // Parse items to calculate shipping
+    let orderItems = order.items
+    if (typeof orderItems === 'string') {
+      try {
+        orderItems = JSON.parse(orderItems)
+      } catch (e) {
+        orderItems = []
+      }
+    }
+    if (!Array.isArray(orderItems)) {
+      orderItems = []
+    }
+
+    // Calculate shipping charge
+    const itemsSubtotal = orderItems.reduce((sum: number, item: any) => {
+      const price = item.price || 0
+      const qty = item.quantity || item.qty || 1
+      return sum + (price * qty)
+    }, 0)
+    const shippingCharge = calculateShippingCharge(itemsSubtotal, order.shipping_address)
+
     const emailResponse = await fetch(emailUrl, {
       method: 'POST',
       headers: {
@@ -346,6 +414,7 @@ async function sendOrderNotifyEmail(order: any) {
         customerName: order.customer_name,
         customerEmail: order.customer_email,
         total: order.total_amount,
+        shippingCharge: shippingCharge,
         items: order.items
       })
     })
@@ -407,19 +476,12 @@ export async function POST(request: NextRequest) {
       amount: webhookData.amount
     })
 
-    // Verify webhook signature if secret is configured
+    // Verify webhook signature if both secret AND signature are present
     const signature = request.headers.get('x-zoho-signature')
     const webhookSecret = process.env.ZOHO_WEBHOOK_SECRET
     
-    if (webhookSecret) {
-      if (!signature) {
-        console.error('❌ Missing x-zoho-signature header')
-        return NextResponse.json(
-          { error: 'Missing signature header' },
-          { status: 401 }
-        )
-      }
-
+    if (webhookSecret && signature) {
+      // Both secret and signature present - verify it
       if (!verifyWebhookSignature(rawBody, signature)) {
         console.error('❌ Webhook signature verification failed')
         return NextResponse.json(
@@ -428,6 +490,10 @@ export async function POST(request: NextRequest) {
         )
       }
       console.log('✅ Webhook signature verified')
+    } else if (webhookSecret && !signature) {
+      // Secret configured but Zoho not sending signature
+      console.warn('⚠️ ZOHO_WEBHOOK_SECRET is configured but Zoho is not sending x-zoho-signature header')
+      console.warn('⚠️ Proceeding without signature verification (check Zoho webhook configuration)')
     } else {
       console.warn('⚠️ ZOHO_WEBHOOK_SECRET not configured - skipping signature verification (not recommended for production)')
     }

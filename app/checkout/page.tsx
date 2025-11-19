@@ -400,9 +400,7 @@ function CheckoutPageContent() {
     return { subtotal, shipping, total };
   }, [cartItems, shippingAddress.state]);
 
-  // Shipping is now automatically recalculated via useMemo when state or cart changes
 
-  // Handle online payment with Zoho Widget
 // Handle online payment with Zoho Widget
 const handleOnlinePayment = async (orderData: any) => {
   console.log('[Checkout] ===== HANDLE ONLINE PAYMENT CALLED =====');
@@ -695,6 +693,7 @@ const handleOnlinePayment = async (orderData: any) => {
             customerName: customerDetails.name,
             total: Number(total ?? 0),
             items: cartItems.map(i => ({ name: i.product_name, qty: i.quantity, price: i.price })),
+            shippingCharge: Number(shipping ?? 0),
           })
         }).catch(() => {});
 
@@ -708,6 +707,7 @@ const handleOnlinePayment = async (orderData: any) => {
             customerEmail: customerDetails.email,
             total: Number(total ?? 0),
             items: cartItems.map(i => ({ name: i.product_name, qty: i.quantity, price: i.price })),
+            shippingCharge: Number(shipping ?? 0),
           })
         }).catch(() => {});
         

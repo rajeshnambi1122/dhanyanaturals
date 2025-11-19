@@ -22,7 +22,8 @@ import {
   RotateCcw,
   CheckCircle,
 } from "lucide-react"
-import { productService, userDataService, reviewService, supabase, type Product, type Review } from "@/lib/supabase"
+import { productService, userDataService, reviewService, supabase } from "@/lib/supabase"
+import { Product, Review } from "@/lib/types"
 import { useCart } from "@/contexts/CartContext"
 import { useAuth } from "@/contexts/AuthContext"
 
@@ -82,7 +83,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
     try {
       console.log(`[Product] Loading reviews for product ID: ${id}`);
       const reviewsData = await reviewService.getProductReviews(parseInt(id))
-      setReviews(reviewsData)
+      setReviews(reviewsData as unknown as Review[])
     } catch (error) {
       console.error("Error loading reviews:", error)
     }

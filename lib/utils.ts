@@ -12,9 +12,10 @@ export function buildOrderEmailHtml(params: {
   orderId?: number | string
   status?: string
   items?: Array<{ name: string; qty: number; price: number }>
+  shippingCharge?: number
   total?: number
 }) {
-  const { heading, intro, orderId, status, items = [], total } = params
+  const { heading, intro, orderId, status, items = [], shippingCharge, total } = params
   
   // Get base URL for logo
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
@@ -28,6 +29,15 @@ export function buildOrderEmailHtml(params: {
         )}</td></tr>`
     )
     .join("")
+  
+  // Calculate subtotal if we have shipping charge
+  const subtotal = items.reduce((sum, i) => sum + (i.price * i.qty), 0);
+  
+  const shippingHtml =
+    typeof shippingCharge === "number"
+      ? `<tr><td style="padding:6px 0;color:#111">Shipping Charge</td><td style="padding:6px 0;text-align:right;color:#111">₹${shippingCharge.toFixed(2)}</td></tr>`
+      : ""
+  
   const totalHtml =
     typeof total === "number"
       ? `<tr><td style="padding-top:8px;border-top:1px solid #eee;font-weight:600;color:#111">Total</td><td style="padding-top:8px;border-top:1px solid #eee;text-align:right;font-weight:700;color:#0a7e3a">₹${total.toFixed(
@@ -55,6 +65,7 @@ export function buildOrderEmailHtml(params: {
         <h3 style="margin:0 0 12px;color:#111;font-size:16px;font-weight:600">Order Items</h3>
         <table style="width:100%;border-collapse:collapse">
           ${itemsHtml}
+          ${shippingHtml}
           ${totalHtml}
         </table>
       </div>` : ""}

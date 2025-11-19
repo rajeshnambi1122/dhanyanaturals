@@ -1178,7 +1178,7 @@ export default function AdminDashboard() {
                               <div className="mb-2 p-1 bg-yellow-50 rounded-lg">
                                 <h4 className="font-semibold text-gray-800 mb-1 flex items-center gap-1 text-xs">
                                   <FileText className="h-3 w-3" />
-                                  Admin Notes
+                                  Notes
                                 </h4>
                                 <div className="text-xs text-gray-600 line-clamp-1">{order.notes}</div>
                               </div>
