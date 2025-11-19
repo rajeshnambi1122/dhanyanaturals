@@ -245,14 +245,14 @@ async function isWebhookAlreadyProcessed(
 /**
  * Calculate shipping charge based on business rules
  * Rules:
- * - Free shipping if total amount >= ₹999
+ * - Free shipping if total amount > ₹999
  * - ₹50 for Tamil Nadu
  * - ₹80 for other states
  */
 function calculateShippingCharge(totalAmount: number, shippingAddress: any): number {
-  // Free shipping for orders >= ₹999
-  if (totalAmount >= 999) {
-    console.log('📦 Free shipping applied (order >= ₹999)')
+  // Free shipping for orders > ₹999
+  if (totalAmount > 999) {
+    console.log('📦 Free shipping applied (order > ₹999)')
     return 0
   }
 
@@ -270,7 +270,7 @@ function calculateShippingCharge(totalAmount: number, shippingAddress: any): num
   // Check state - case insensitive comparison
   const state = (address?.state || '').toLowerCase().trim()
   
-  if (state === 'tamil nadu' || state === 'tamilnadu') {
+  if (state === 'tamil nadu' || state === 'tamilnadu' || state === 'tn') {
     console.log('📦 Tamil Nadu shipping: ₹50')
     return 50
   } else {
@@ -383,26 +383,40 @@ async function sendOrderNotifyEmail(order: any) {
     }
     const emailUrl = `${appUrl}/api/emails/order-notify`
 
-    // Parse items to calculate shipping
+    // Parse items from JSONB if needed
     let orderItems = order.items
     if (typeof orderItems === 'string') {
       try {
         orderItems = JSON.parse(orderItems)
       } catch (e) {
+        console.error('Failed to parse order items:', e)
         orderItems = []
       }
     }
+
+    // Ensure items is an array
     if (!Array.isArray(orderItems)) {
       orderItems = []
     }
 
+    // Transform items to match email API format
+    // Database has: { product_name, quantity, price }
+    // Email API expects: { name, qty, price }
+    const emailItems = orderItems.map((item: any) => ({
+      name: item.product_name || item.name || 'Unknown Product',
+      qty: item.quantity || item.qty || 1,
+      price: item.price || 0
+    }))
+
     // Calculate shipping charge
-    const itemsSubtotal = orderItems.reduce((sum: number, item: any) => {
+    const itemsSubtotal = emailItems.reduce((sum: number, item: any) => {
       const price = item.price || 0
-      const qty = item.quantity || item.qty || 1
+      const qty = item.qty || 1
       return sum + (price * qty)
     }, 0)
     const shippingCharge = calculateShippingCharge(itemsSubtotal, order.shipping_address)
+
+    console.log('📧 Notify email - Items:', emailItems.length, 'items, Subtotal:', itemsSubtotal, 'Shipping:', shippingCharge)
 
     const emailResponse = await fetch(emailUrl, {
       method: 'POST',
@@ -415,7 +429,7 @@ async function sendOrderNotifyEmail(order: any) {
         customerEmail: order.customer_email,
         total: order.total_amount,
         shippingCharge: shippingCharge,
-        items: order.items
+        items: emailItems  // Use transformed items
       })
     })
     if (!emailResponse.ok) {
