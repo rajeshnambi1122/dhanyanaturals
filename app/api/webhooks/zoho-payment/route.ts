@@ -567,10 +567,19 @@ export async function POST(request: NextRequest) {
     }
 
     // Determine if payment was successful
+    // Check both the payment status AND the event type
     const successStatuses = ['success', 'authorized', 'captured', 'paid']
+    const successEvents = ['payment.succeeded', 'payment.authorized', 'payment.captured']
+    
     const isSuccess = successStatuses.some(s => 
-      webhookData.status.toLowerCase().includes(s)
-    )
+      webhookData.status?.toLowerCase().includes(s)
+    ) || successEvents.includes(webhookData.event_type)
+    
+    console.log('💳 Payment success check:', {
+      status: webhookData.status,
+      event_type: webhookData.event_type,
+      isSuccess: isSuccess
+    })
 
     // Update the order
     const updateSuccess = await updateOrderAfterPayment(
