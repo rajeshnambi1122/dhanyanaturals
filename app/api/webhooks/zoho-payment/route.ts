@@ -348,11 +348,18 @@ async function sendOrderConfirmationEmail(order: any) {
     console.log('💰 Items subtotal:', itemsSubtotal)
     console.log('🚚 Calculated shipping charge:', shippingCharge)
 
-    // Call the email API endpoint
+    // Call the email API endpoint with internal API key
+    const internalApiKey = process.env.INTERNAL_API_SECRET
+    if (!internalApiKey) {
+      console.error('❌ INTERNAL_API_SECRET not configured - cannot send email')
+      return
+    }
+
     const emailResponse = await fetch(emailUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'x-api-key': internalApiKey,
       },
       body: JSON.stringify({ 
         to: order.customer_email,
@@ -418,10 +425,17 @@ async function sendOrderNotifyEmail(order: any) {
 
     console.log('📧 Notify email - Items:', emailItems.length, 'items, Subtotal:', itemsSubtotal, 'Shipping:', shippingCharge)
 
+    const internalApiKey = process.env.INTERNAL_API_SECRET
+    if (!internalApiKey) {
+      console.error('❌ INTERNAL_API_SECRET not configured - cannot send email')
+      return
+    }
+
     const emailResponse = await fetch(emailUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'x-api-key': internalApiKey,
       },
       body: JSON.stringify({ 
         orderId: order.id,

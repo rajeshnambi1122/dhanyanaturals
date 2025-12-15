@@ -683,33 +683,9 @@ const handleOnlinePayment = async (orderData: any) => {
         console.log('[Checkout] Order success state set, scrolling to top');
         window.scrollTo({ top: 0, behavior: 'smooth' });
         
-        // Send customer confirmation email
-        fetch('/api/emails/order-placed', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            to: String(customerDetails.email || ''),
-            orderId: finalOrderId,
-            customerName: customerDetails.name,
-            total: Number(total ?? 0),
-            items: cartItems.map(i => ({ name: i.product_name, qty: i.quantity, price: i.price })),
-            shippingCharge: Number(shipping ?? 0),
-          })
-        }).catch(() => {});
-
-        // Send admin notification email
-        fetch('/api/emails/order-notify', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            orderId: finalOrderId,
-            customerName: customerDetails.name,
-            customerEmail: customerDetails.email,
-            total: Number(total ?? 0),
-            items: cartItems.map(i => ({ name: i.product_name, qty: i.quantity, price: i.price })),
-            shippingCharge: Number(shipping ?? 0),
-          })
-        }).catch(() => {});
+        // ✅ Email notifications are handled by Zoho webhook after payment confirmation
+        // No need to send emails here - webhook will handle it securely
+        console.log('[Checkout] Order created - webhook will send confirmation emails');
         
         return;
       } else {
@@ -1053,20 +1029,11 @@ const handleOnlinePayment = async (orderData: any) => {
         
         setOrderId(String(newOrder.id));
         setOrderSuccess(true);
-        console.log('[Checkout] Order success state set');
+        console.log('[Checkout] COD order success state set');
         
-        // Fire and forget: send order placed email via server API
-        fetch('/api/emails/order-placed', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            to: String(customerDetails.email || ''),
-            orderId: String((newOrder as any).id),
-            items: (orderData as any).items?.map((i: any) => ({ name: i.product_name || i.name, qty: i.quantity || i.qty || 1, price: Number(i.price) || 0 })) || [],
-            total: Number((orderData as any).total_amount ?? 0),
-            customerName: customerDetails.name,
-          })
-        }).catch(() => {});
+        // ⚠️ NOTE: COD orders don't have webhook - emails need to be handled differently
+        // TODO: When COD is enabled, implement server-side email endpoint for COD orders
+        console.log('[Checkout] COD order created - manual email handling required');
         
         // Scroll to top on mobile to show success message
         window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1098,18 +1065,8 @@ const handleOnlinePayment = async (orderData: any) => {
       setOrderSuccess(true);
       console.log('[Checkout] Order success state set');
       
-      // Fire and forget: send order placed email via server API
-      fetch('/api/emails/order-placed', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          to: String(customerDetails.email || ''),
-          orderId: String((newOrder as any).id),
-          items: (orderData as any).items?.map((i: any) => ({ name: i.product_name || i.name, qty: i.quantity || i.qty || 1, price: Number(i.price) || 0 })) || [],
-          total: Number((orderData as any).total_amount ?? 0),
-          customerName: customerDetails.name,
-        })
-      }).catch(() => {});
+      // ✅ Email notifications are handled by Zoho webhook after payment confirmation
+      console.log('[Checkout] Order created - webhook will send confirmation emails');
       
       // Scroll to top on mobile to show success message
       window.scrollTo({ top: 0, behavior: 'smooth' });

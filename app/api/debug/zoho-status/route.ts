@@ -4,8 +4,14 @@ import { getTokenStatus, getAccessToken } from '@/lib/zoho';
 /**
  * Debug endpoint to check Zoho token configuration
  * This helps identify authentication issues
+ * ⚠️ ONLY AVAILABLE IN DEVELOPMENT
  */
 export async function GET() {
+  // Block in production for security
+  if (process.env.NODE_ENV === 'production') {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  }
+  
   try {
     // Get token status
     const status = await getTokenStatus();

@@ -53,7 +53,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
     rating: 5,
     reviewText: ""
   })
-  
+
   const loadingRef = useRef(false) // Prevent race conditions
 
   const loadProduct = useCallback(async () => {
@@ -65,7 +65,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
         // Load related products
         const related = await productService.getRelatedProducts(productData.id, productData.category, 4)
         setRelatedProducts(related)
-        
+
         // Prefetch related products for instant navigation
         related.forEach(relatedProduct => {
           router.prefetch(`/products/${relatedProduct.id}`)
@@ -91,12 +91,12 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
 
   const extractUserReview = useCallback(() => {
     if (!user) return
-    
+
     // Find user's review from already loaded reviews (no API call needed!)
-    const userReviewData = reviews.find(review => 
+    const userReviewData = reviews.find(review =>
       review.user_id === (user.user_id || user.id)
     )
-    
+
     setUserReview(userReviewData || null)
     if (userReviewData) {
       setReviewFormData({
@@ -115,7 +115,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
   useEffect(() => {
     // Prevent duplicate API calls in React Strict Mode
     if (dataLoaded || !id || loadingRef.current) return;
-    
+
     console.log(`[Product] useEffect triggered for ID: ${id}`);
     loadingRef.current = true;
     loadProduct()
@@ -148,13 +148,13 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
       }, 4000);
       return;
     }
-    
+
     if (!product) return;
-    
+
     setAddCartLoading(true);
     try {
       await addToCart(product.id, quantity);
-      
+
       // Create success notification
       const notification = document.createElement('div');
       notification.className = 'fixed bottom-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg z-50 animate-slide-in';
@@ -171,7 +171,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
       setTimeout(() => {
         notification.remove();
       }, 4000);
-      
+
     } catch (err) {
       // Create error notification
       const notification = document.createElement('div');
@@ -199,7 +199,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
       router.push('/login?redirect=' + encodeURIComponent(`/products/${id}`));
       return;
     }
-    
+
     if (!product) return;
 
     // Check stock
@@ -239,7 +239,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
       // Check if Web Share API is supported (mobile browsers)
       if (navigator.share) {
         await navigator.share(shareData)
-        
+
         // Success notification
         const notification = document.createElement('div');
         notification.className = 'fixed top-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg z-50 animate-slide-in';
@@ -261,7 +261,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
         // Try clipboard API first
         if (navigator.clipboard) {
           await navigator.clipboard.writeText(window.location.href)
-          
+
           // Success notification for clipboard
           const notification = document.createElement('div');
           notification.className = 'fixed top-4 right-4 bg-blue-500 text-white px-6 py-3 rounded-lg shadow-lg z-50 animate-slide-in';
@@ -285,13 +285,13 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
       }
     } catch (error) {
       console.error('Error sharing:', error)
-      
+
       // Show share options as fallback if sharing fails
       if (error instanceof Error && error.name === 'AbortError') {
         // User cancelled the share, do nothing
         return
       }
-      
+
       // For other errors, show share options
       showShareOptions()
     }
@@ -302,7 +302,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
 
     const currentUrl = window.location.href
     const text = `Check out this amazing ${product.name} from Dhanya Naturals!`
-    
+
     // Create share options modal
     const modal = document.createElement('div');
     modal.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-50 animate-fade-in';
@@ -347,14 +347,14 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
         </button>
       </div>
     `;
-    
+
     // Close on background click
     modal.addEventListener('click', (e) => {
       if (e.target === modal) {
         modal.remove();
       }
     });
-    
+
     document.body.appendChild(modal);
   }
 
@@ -385,13 +385,13 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
       }
 
       await reviewService.createOrUpdateReview(reviewData)
-      
+
       // Reload reviews (this will automatically update user review via extractUserReview)
       await loadReviews()
-      
+
       // Close form
       setShowReviewForm(false)
-      
+
       // Show success notification
       const notification = document.createElement('div');
       notification.className = 'fixed top-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg z-50 animate-slide-in';
@@ -408,7 +408,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
       setTimeout(() => {
         notification.remove();
       }, 4000);
-      
+
     } catch (error) {
       console.error("Error submitting review:", error)
       // Show error notification
@@ -437,11 +437,11 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
 
     try {
       await reviewService.deleteReview(userReview.id, user.user_id || user.id)
-      
+
       // Reload reviews (this will automatically clear user review via extractUserReview)
       await loadReviews()
       setShowReviewForm(false)
-      
+
       // Show success notification
       const notification = document.createElement('div');
       notification.className = 'fixed top-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg z-50 animate-slide-in';
@@ -458,7 +458,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
       setTimeout(() => {
         notification.remove();
       }, 4000);
-      
+
     } catch (error) {
       console.error("Error deleting review:", error)
     }
@@ -551,9 +551,8 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
                   <button
                     key={index}
                     onClick={() => setSelectedImage(index)}
-                    className={`relative w-16 h-16 sm:w-20 sm:h-20 rounded-lg overflow-hidden ${
-                      selectedImage === index ? "ring-2 ring-green-500" : ""
-                    }`}
+                    className={`relative w-16 h-16 sm:w-20 sm:h-20 rounded-lg overflow-hidden ${selectedImage === index ? "ring-2 ring-green-500" : ""
+                      }`}
                   >
                     <Image
                       src={image || "/placeholder.svg"}
@@ -590,9 +589,8 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
                   {[...Array(5)].map((_, i) => (
                     <Star
                       key={i}
-                      className={`h-5 w-5 ${
-                        i < Math.floor(product.rating || 0) ? "fill-yellow-400 text-yellow-400" : "text-gray-300"
-                      }`}
+                      className={`h-5 w-5 ${i < Math.floor(product.rating || 0) ? "fill-yellow-400 text-yellow-400" : "text-gray-300"
+                        }`}
                     />
                   ))}
                   <span className="ml-2 text-sm font-medium">{product.rating || 0}</span>
@@ -675,7 +673,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
                   className="flex-1 glass-input bg-transparent border-green-600 text-green-600 hover:bg-green-600 hover:text-white"
                   size="lg"
                 >
-                   Buy Now
+                  Buy Now
                 </Button>
               </div>
 
@@ -688,8 +686,8 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
                   <Heart className={`h-4 w-4 mr-2 ${isWishlisted ? "fill-red-500 text-red-500" : ""}`} />
                   {isWishlisted ? "Wishlisted" : "Add to Wishlist"}
                 </Button>
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   className="glass-input bg-transparent hover-lift"
                   onClick={() => {
                     handleShare();
@@ -734,26 +732,26 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
         <div className="mt-8 md:mt-16">
           <Tabs defaultValue="description" className="w-full">
             <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 gap-2 h-auto p-1 bg-white/80 backdrop-blur-sm rounded-xl shadow-lg">
-              <TabsTrigger 
-                value="description" 
+              <TabsTrigger
+                value="description"
                 className="text-xs sm:text-sm font-medium py-3 px-2 rounded-lg data-[state=active]:bg-[#50A41C] data-[state=active]:text-white data-[state=active]:shadow-md transition-all duration-200"
               >
                 Description
               </TabsTrigger>
-              <TabsTrigger 
-                value="ingredients" 
+              <TabsTrigger
+                value="ingredients"
                 className="text-xs sm:text-sm font-medium py-3 px-2 rounded-lg data-[state=active]:bg-[#50A41C] data-[state=active]:text-white data-[state=active]:shadow-md transition-all duration-200"
               >
                 Ingredients
               </TabsTrigger>
-              <TabsTrigger 
-                value="usage" 
+              <TabsTrigger
+                value="usage"
                 className="text-xs sm:text-sm font-medium py-3 px-2 rounded-lg data-[state=active]:bg-[#50A41C] data-[state=active]:text-white data-[state=active]:shadow-md transition-all duration-200"
               >
                 How to Use
               </TabsTrigger>
-              <TabsTrigger 
-                value="reviews" 
+              <TabsTrigger
+                value="reviews"
                 className="text-xs sm:text-sm font-medium py-3 px-2 rounded-lg data-[state=active]:bg-[#50A41C] data-[state=active]:text-white data-[state=active]:shadow-md transition-all duration-200"
               >
                 Reviews
@@ -859,7 +857,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
                     <h4 className="font-semibold text-gray-800 mb-4">
                       {userReview ? "Edit My Review" : "Write a Review"}
                     </h4>
-                    
+
                     {/* Rating Selection */}
                     <div className="mb-4">
                       <label className="block text-sm font-medium text-gray-700 mb-2">Rating</label>
@@ -874,11 +872,10 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
                             className="p-1 hover:scale-110 transition-transform"
                           >
                             <Star
-                              className={`h-6 w-6 ${
-                                rating <= reviewFormData.rating
+                              className={`h-6 w-6 ${rating <= reviewFormData.rating
                                   ? "fill-yellow-400 text-yellow-400"
                                   : "text-gray-300"
-                              }`}
+                                }`}
                             />
                           </button>
                         ))}
@@ -917,7 +914,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
                           userReview ? "Update Review" : "Submit Review"
                         )}
                       </Button>
-                      
+
                       <Button
                         onClick={() => setShowReviewForm(false)}
                         variant="outline"
@@ -958,13 +955,12 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
                       <div key={review.id} className="bg-white/50 p-4 rounded-xl border border-gray-100 shadow-sm">
                         <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 mb-3">
                           <div className="flex items-center gap-2">
-                      <div className="flex">
+                            <div className="flex">
                               {[...Array(5)].map((_, i) => (
                                 <Star
                                   key={i}
-                                  className={`h-4 w-4 ${
-                                    i < review.rating ? "fill-yellow-400 text-yellow-400" : "text-gray-300"
-                                  }`}
+                                  className={`h-4 w-4 ${i < review.rating ? "fill-yellow-400 text-yellow-400" : "text-gray-300"
+                                    }`}
                                 />
                               ))}
                             </div>
@@ -1010,13 +1006,14 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
               <Link key={relatedProduct.id} href={`/products/${relatedProduct.id}`} prefetch={true}>
                 <div className="glass-product-card product-card-hover cursor-pointer">
                   <div className="p-0">
-                    <Image
-                      src={relatedProduct.image_url || "/placeholder.svg"}
-                      alt={relatedProduct.name}
-                      width={200}
-                      height={200}
-                      className="w-full h-48 object-cover rounded-t-lg"
-                    />
+                    <div className="aspect-square relative overflow-hidden rounded-t-lg">
+                      <Image
+                        src={relatedProduct.image_url || "/placeholder.svg"}
+                        alt={relatedProduct.name}
+                        fill
+                        className="object-cover transition-transform duration-500 hover:scale-110"
+                      />
+                    </div>
                     <div className="p-4">
                       <h3 className="font-semibold mb-2">{relatedProduct.name}</h3>
                       <div className="flex items-center mb-2">

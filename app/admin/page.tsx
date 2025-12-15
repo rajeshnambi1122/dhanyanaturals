@@ -80,20 +80,15 @@ export default function AdminDashboard() {
           return
         }
 
+        // ⚠️ TODO: Send notification email via secure server endpoint
+        // Email endpoints now require API key authentication (cannot be called from client)
         if (updated?.customer_email) {
-          fetch('/api/emails/order-status', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              to: String(updated.customer_email || ''),
-              orderId,
-              newStatus,
-              items: (updated.items as any[])?.map((i: any) => ({ name: i.product_name || i.name, qty: i.quantity || i.qty || 1, price: Number(i.price) || 0 })) || [],
-              total: Number(updated?.total_amount ?? 0),
-              customerName: updated?.customer_name ?? undefined,
-              trackingNumber: updated?.tracking_number ?? undefined,
-            })
-          }).catch(() => {})
+          console.log('[Admin] Order status changed:', { orderId, newStatus });
+          console.log('[Admin] Status change email notification pending - needs server endpoint');
+          // TODO: Create /api/admin/update-order-status endpoint that:
+          // 1. Verifies admin authentication (server-side)
+          // 2. Updates order status
+          // 3. Calls email API with internal API key
         }
       } catch {}
 

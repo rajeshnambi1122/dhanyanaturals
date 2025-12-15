@@ -117,7 +117,7 @@ export default function Footer() {
           </div>
         </div>
         <div className="border-t border-gray-800 mt-12 pt-8 text-center text-gray-400 animate-fade-in">
-          <p> Dhanya Naturals Made with ❤️ for nature lovers.</p>
+          <p> Dhanya Naturals Made with ❤️<br></br> for nature lovers.</p>
         </div>
       </div>
     </footer>

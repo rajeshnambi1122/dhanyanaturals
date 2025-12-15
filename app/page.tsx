@@ -4,40 +4,40 @@ import { useState, useEffect } from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
-import { Leaf, ShoppingBag, Star, Shield, Heart, Sparkles, Zap} from "lucide-react"
+import { Leaf, ShoppingBag, Star, Shield, Heart, Sparkles, Zap } from "lucide-react"
 import { productService, supabase } from "@/lib/supabase"
 import ConfettiWrapper from "@/components/ConfettiWrapper"
 
 const categories = [
-  { 
-    name: "Soaps", 
-    image: "https://ccklbyexywvclddrqjwr.supabase.co/storage/v1/object/public/product-images/products/1756378335713-lohlfd4ei.png", 
-    count: 0, 
-    gradient: "from-blue-400 to-blue-600" 
+  {
+    name: "Soaps",
+    image: "https://ccklbyexywvclddrqjwr.supabase.co/storage/v1/object/public/product-images/products/1756378335713-lohlfd4ei.png",
+    count: 0,
+    gradient: "from-blue-400 to-blue-600"
   },
-  { 
-    name: "Shampoos", 
-    image: "https://ccklbyexywvclddrqjwr.supabase.co/storage/v1/object/public/product-images/products/1756347564729-vq72fshtn.png", 
-    count: 0, 
-    gradient: "from-purple-400 to-purple-600" 
+  {
+    name: "Shampoos",
+    image: "https://ccklbyexywvclddrqjwr.supabase.co/storage/v1/object/public/product-images/products/1756347564729-vq72fshtn.png",
+    count: 0,
+    gradient: "from-purple-400 to-purple-600"
   },
-  { 
-    name: "Herbal Powders", 
-    image: "https://ccklbyexywvclddrqjwr.supabase.co/storage/v1/object/public/product-images/products/nalangumaavu1-min.jpg", 
-    count: 12, 
-    gradient: "from-green-400 to-green-600" 
+  {
+    name: "Herbal Powders",
+    image: "https://ccklbyexywvclddrqjwr.supabase.co/storage/v1/object/public/product-images/products/nalangumaavu1-min.jpg",
+    count: 12,
+    gradient: "from-green-400 to-green-600"
   },
-  { 
-    name: "Hair Care", 
-    image: "https://ccklbyexywvclddrqjwr.supabase.co/storage/v1/object/public/product-images/products/neemcomb1.png", 
-    count: 10, 
-    gradient: "from-pink-400 to-pink-600" 
+  {
+    name: "Hair Care",
+    image: "https://ccklbyexywvclddrqjwr.supabase.co/storage/v1/object/public/product-images/products/neemcomb1.png",
+    count: 10,
+    gradient: "from-pink-400 to-pink-600"
   },
-  { 
-    name: "Skin Care", 
-    image: "https://ccklbyexywvclddrqjwr.supabase.co/storage/v1/object/public/product-images/products/bodybutter1-min.jpg", 
-    count: 18, 
-    gradient: "from-yellow-400 to-yellow-600" 
+  {
+    name: "Skin Care",
+    image: "https://ccklbyexywvclddrqjwr.supabase.co/storage/v1/object/public/product-images/products/bodybutter1-min.jpg",
+    count: 18,
+    gradient: "from-yellow-400 to-yellow-600"
   },
 ]
 
@@ -88,9 +88,9 @@ export default function HomePage() {
 
   // Map category names to database category keys
   const getCategoryKey = (categoryName: string) => {
-    const mapping: {[key: string]: string} = {
+    const mapping: { [key: string]: string } = {
       "Soaps": "soaps",
-      "Shampoos": "shampoos", 
+      "Shampoos": "shampoos",
       "Herbal Powders": "herbal-powders",
       "Hair Care": "hair-care",
       "Skin Care": "skin-care"
@@ -109,7 +109,7 @@ export default function HomePage() {
     const fetchData = async () => {
       try {
         setLoading(true)
-        
+
         // Fetch category counts and featured products in parallel
         const [productsData, featuredData] = await Promise.all([
           supabase
@@ -150,7 +150,7 @@ export default function HomePage() {
     <div className="min-h-screen glass-background page-transition">
       {/* Confetti Effect */}
       <ConfettiWrapper />
-      
+
       {/* Hero Section */}
       <section className="py-12 px-4 relative overflow-hidden">
         <div className="container mx-auto">
@@ -185,7 +185,7 @@ export default function HomePage() {
                   </Link>
                 </div>
               </div>
-              
+
               {/* Hero Image */}
               <div className="relative order-1 lg:order-2">
                 <Image
@@ -206,23 +206,34 @@ export default function HomePage() {
       <section className="py-20">
         <div className="container mx-auto px-4">
           <div className="text-center mb-16 animate-fade-in">
-            <h2 className="text-4xl font-bold mb-4">
+            <h2 className="text-3xl sm:text-4xl font-bold mb-4">
               Why Choose <span className="gradient-text">Dhanya Naturals</span>
             </h2>
-            <p className="text-xl text-gray-600 max-w-2xl mx-auto">
+            <p className="text-base sm:text-xl text-gray-600 max-w-2xl mx-auto">
               Experience the difference with our premium natural products crafted with care and expertise.
             </p>
           </div>
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8 stagger-animation">
+          <div className="grid grid-cols-1 md:grid-cols-6 gap-6 stagger-animation">
             {features.map((feature, index) => (
-              <div key={feature.title} className="text-center glass-stats-card p-8 floating hover-lift card-stack">
-                <div
-                  className={`${feature.bgColor} w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 hover-glow`}
-                >
-                  <feature.icon className={`h-8 w-8 ${feature.color}`} />
+              <div
+                key={feature.title}
+                className={`
+                  ${index < 2 ? 'md:col-span-3' : 'md:col-span-2'}
+                  relative overflow-hidden glass-card p-8 hover-lift group transition-all duration-300 border border-white/20
+                `}
+              >
+                <div className={`absolute -top-4 -right-4 w-32 h-32 rounded-full opacity-10 ${feature.bgColor} group-hover:scale-150 transition-transform duration-700 ease-out`}></div>
+
+                <div className="relative z-10 flex flex-col h-full items-start text-left">
+                  <div className={`
+                    ${feature.bgColor} p-4 rounded-2xl mb-6 group-hover:rotate-6 transition-transform duration-300 shadow-sm
+                  `}>
+                    <feature.icon className={`h-8 w-8 ${feature.color}`} />
+                  </div>
+
+                  <h3 className="text-xl font-bold mb-3 text-gray-900 group-hover:text-green-700 transition-colors">{feature.title}</h3>
+                  <p className="text-gray-600 leading-relaxed">{feature.description}</p>
                 </div>
-                <h3 className="text-xl font-semibold mb-2">{feature.title}</h3>
-                <p className="text-gray-600">{feature.description}</p>
               </div>
             ))}
           </div>
@@ -266,12 +277,12 @@ export default function HomePage() {
       {/* Featured Products */}
       <section className="py-20">
         <div className="container mx-auto px-4">
-          <div className="flex justify-between items-center mb-16 animate-fade-in">
+          <div className="flex justify-between items-center mb-12 animate-fade-in">
             <div>
-              <h2 className="text-4xl font-bold mb-2">
+              <h2 className="text-3xl sm:text-4xl font-bold mb-2">
                 Featured <span className="gradient-text">Products</span>
               </h2>
-              <p className="text-xl text-gray-600">Handpicked favorites loved by our customers</p>
+              <p className="text-base sm:text-xl text-gray-600">Handpicked favorites loved by our customers</p>
             </div>
             <Link href="/products">
               <Button variant="outline" className="glass-button-secondary hover-lift bg-transparent">

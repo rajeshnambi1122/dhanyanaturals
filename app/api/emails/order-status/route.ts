@@ -1,7 +1,16 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { sendOrderStatusEmail } from '@/lib/resend'
+import { requireInternalAuth } from '@/lib/api-auth'
 
-export async function POST(req: Request) {
+/**
+ * Send order status update email
+ * ⚠️ INTERNAL USE ONLY - Requires API key authentication
+ */
+export async function POST(req: NextRequest) {
+  // ✅ SECURITY: Verify internal API key
+  const authError = requireInternalAuth(req)
+  if (authError) return authError
+  
   try {
     const body = await req.json()
     const { to, orderId, newStatus, items, total, customerName, trackingNumber, shippingCharge } = body || {}
